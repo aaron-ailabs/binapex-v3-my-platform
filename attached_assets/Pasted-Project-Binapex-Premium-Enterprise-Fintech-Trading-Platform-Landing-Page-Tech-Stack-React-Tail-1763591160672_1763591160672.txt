@@ -1,0 +1,41 @@
+Project: Binapex– Premium Enterprise Fintech Trading Platform & Landing Page Tech Stack: React, Tailwind CSS, Lucide React Icons, Shadcn UI Components.
+Design Language:
+Theme: "Billion-dollar startup." Minimalist, bold, premium dark mode (default).
+Palette: Deep charcoal/black backgrounds, gold/metallic accents for "Binapex" branding, crisp white text, high-contrast controls.
+Typography: Clean, sans-serif (Inter or similar), professional and trustworthy.
+Responsiveness: Mobile-first architecture. Sidebar becomes a drawer on mobile.
+Core Functionality (State Management): Create a Single Page Application wrapper. Use a state variable isLoggedIn to toggle between the Public Landing Page and the Secure Trading Dashboard. Start on the Landing Page.
+
+PART 1: PUBLIC LANDING PAGE (When isLoggedIn is false)
+Replicate the following structure exactly with pixel-perfect attention to the provided text.
+1. Header:
+Logo: "Binapex" (Gold/Premium).
+Language Toggle: "ENGLISH | CHINESE | MALAY".
+Login Button: Sets isLoggedIn to true.
+2. Hero Section:
+Headline: "Advanced Trading Tools"
+Subtitle: "Professional-grade tools and charts for successful trading"
+Component: A 3-slide visual carousel with "Previous/Next" navigation controls.
+3. Features Grid (Why Choose Us):
+Licensed and Regulated Broker: "We are a licensed and regulated broker, providing a secure and transparent trading environment for our clients. The company is operating under the brand name iDinar are licensed by MISA in the Comoro Islands and FSCA in South Africa."
+Secure Platform: "Our platform is built with state-of-the-art security protocols, including end-to-end encryption, multi-factor authentication, and advanced threat detection, ensuring that your digital assets and personal information are always protected against unauthorized access and cyber threats."
+Instant Transactions: "Experience lightning-fast execution of trades and transfers, powered by our high-performance infrastructure designed to handle thousands of transactions per second with minimal latency—ensuring you never miss a market opportunity."
+24/7 Support: "Our dedicated and professional support team is available 24/7 to assist you with any questions or issues, providing fast, reliable help whenever you need it—so you can trade with confidence and peace of mind."
+4. Trust & Testimonials:
+Headline: "Traders around the world trust us"
+Subhead: "4.8 / 5.0 Rating based on 10,434 reviews" (Render 5 stars visually).
+Testimonial 1: Mohd. Ikwan shah (Kuala Lumpur, Malaysia): “Alhamdulilahh. Dapat pakai belanje bulan bulan..”
+Testimonial 2: Syed abdul malik (Sabah, Malaysia): “Admin fast respon..very helpful..masyukkkk”
+Testimonial 3: Che Rozia (Johor, Malaysia): “Alhamdulilahh. Dapat pakai belanje bulan bulan..”
+5. Crypto Assets Ticker/List:
+Headline: "Buy Bitcoin, Ethereum and more cryptocurrencies"
+List items: Bitcoin (BTC), Ethereum (ETH), Gold (XAU), Solana (SOL), Ripple (XRP), Cardano (ADA), Dogecoin (DOGE), USDT (USDT).
+6. CTA Section:
+Headline: "Ready to Start Trading?"
+Buttons: "WHATSAPP" (Green icon), "TELEGRAM" (Blue icon).
+7. Footer & Legal (Use exact text provided below, small grey text):
+Company 1: "Uni Fin Invest, company registration number: C186509. Registration address: Rue De La Democratie, office 306, 3rd floor, Ebene Junction, Ebene 72201, Mauritius. Business address: 90 St Jean Road, Office Number 104, Palm Court Offices, 1st Floor, Quatre Bornes, Mauritius."
+Company 2: "iDinar LTD, registration number: HY00623410, international brokerage and clearing house license number: T2023320, issued by Mwali International Services Authority. Registered address: Bonovo Road – Fomboni, Island of Moheli, Comoros Union. Business address: Foti Kolakidi 16, 1st Floor, Agia Zoni, 3031, Limassol, Cyprus."
+Auth Note: "The entities above are authorised to operate under the iDinar brand and trademarks."
+Restricted Notice: "Restricted regions: the entities above do not provide services including, but not limited to, citizens of the European Union and the United States of America and residents of Canada, the European Union, India, Iran, Myanmar, North Korea, Pakistan, the Philippines, the United Kingdom, and the United States of America. The content on this website does not constitute investment advice, nor does it constitute a recommendation or solicitation for any investment activities."
+Risk Disclaimer: "Our services relate to complex derivative products that are traded over the counter. Trading with leverage involves a high level of risk and may not be suitable for all investors. Investing carries risks, and individuals should carefully consider their investment objectives, level of experience, and risk tolerance before making any investment decisions. Traders using arbitrage may be subject to overnight trading commissions. Trade fairly." 

@@ -7,6 +7,7 @@ import Layout from "@/components/layout";
 import NotFound from "@/pages/not-found";
 
 import AuthPage from "@/pages/auth-page";
+import LandingPage from "@/pages/landing-page"; // Import Landing Page
 import TraderDashboard from "@/pages/trader/dashboard";
 import LiveTrading from "@/pages/trader/live-trading";
 import Deposits from "@/pages/trader/deposits";
@@ -44,8 +45,16 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
 }
 
 function Router() {
+  const { user } = useAuth();
+
   return (
     <Switch>
+      {/* Public Routes */}
+      <Route path="/">
+         {/* If user is logged in, redirect to dashboard, otherwise show Landing Page */}
+         {user ? <Redirect to="/dashboard" /> : <LandingPage />}
+      </Route>
+      
       <Route path="/auth" component={AuthPage} />
       
       {/* Trader Routes */}
@@ -91,10 +100,6 @@ function Router() {
       </Route>
       <Route path="/cs/lookup">
         <ProtectedRoute component={UserLookup} allowedRoles={['Customer Service']} />
-      </Route>
-
-      <Route path="/">
-        <Redirect to="/auth" />
       </Route>
 
       <Route component={NotFound} />
