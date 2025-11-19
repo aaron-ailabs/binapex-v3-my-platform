@@ -1,0 +1,138 @@
+Build a professional, multi-role fintech trading platform called "Binapex" with a dark theme. The platform must support three user roles: Trader, Customer Service, and Admin.
+1. Database Schema & Data Models
+Please generate the following database tables:
+ * Users: (Creao default, but add a role field with options: "Trader", "Customer Service", "Admin"). Also add a kyc_status field ("Not Started", "Pending", "Approved", "Rejected") and a membership_tier field ("Bronze", "Silver", "Gold").
+ * Wallets:
+   * user_id (links to Users)
+   * asset_name (e.g., "BTC", "USD", "Gold")
+   * balance (Number)
+ * Transactions:
+   * user_id (links to Users)
+   * type (Text: "Deposit", "Withdrawal")
+   * asset (Text)
+   * amount (Number)
+   * status (Text: "Pending", "Approved", "Rejected")
+   * created_at (Date)
+ * Trades:
+   * user_id (links to Users)
+   * asset (Text)
+   * amount (Number)
+   * direction (Text: "High", "Low")
+   * duration (Text: "1M", "5M", "15M")
+   * entry_price (Number)
+   * exit_price (Number)
+   * result (Text: "Win", "Loss", "Pending")
+   * status (Text: "Open", "Closed")
+   * created_at (Date)
+ * KYC_Submissions:
+   * user_id (links to Users)
+   * document_type (Text: "ID", "Proof of Address")
+   * document_image_url (File/Image)
+   * status (Text: "Pending", "Approved", "Rejected")
+   * admin_notes (Text)
+ * Support_Tickets:
+   * user_id (links to Users)
+   * subject (Text)
+   * message (Text)
+   * status (Text: "Open", "Closed")
+   * cs_agent_id (links to Users)
+2. General UI & Navigation
+ * The entire app must use a dark-first, premium, modern theme.
+ * Create a persistent, collapsible sidebar for main navigation.
+ * Create a header bar with a profile photo, notifications icon, and theme toggle.
+ * User login and registration pages are required.
+3. Trader Portal (Default Role)
+Create the following pages, visible only to the "Trader" role:
+ * Dashboard:
+   * Show personalized text "Welcome, [username]".
+   * Show analytics cards for "Wallet Balance" (from Wallets table) and "Total Trade Payouts" (from Trades table).
+   * Show a table of the user's Wallets (Asset, Balance).
+   * Embed TradingView Widget: Include an HTML embed block on this page.
+ * Live Trading:
+   * Embed TradingView Widget: Add a large HTML embed block for the main chart.
+   * Show an "Asset Stats Panel" (static text for MVP: Price, % Change, 24h High/Low).
+   * Show a "Trade Form" to create a new Trade. Form fields: duration (dropdown), amount (number entry). Buttons: "High", "Low".
+ * Deposits:
+   * A form to create a new "Deposit" Transaction. Fields: asset (dropdown), amount (number).
+   * Include a file upload for "Proof of Upload".
+   * Show a table of the user's "Deposit History" (from Transactions table, filtered by "Deposit").
+ * Withdrawals:
+   * A form to create a new "Withdrawal" Transaction. Fields: asset (dropdown), amount (number), wallet_address (text).
+   * Show a table of the user's "Withdrawal History" (from Transactions table, filtered by "Withdrawal").
+ * Trade History:
+   * A table showing all Trades for the logged-in user.
+ * Security:
+   * A page to manage account settings: Change Password, 2FA Management.
+ * Support:
+   * A form to create a new Support_Ticket.
+4. Admin Portal
+Create the following pages, visible only to the "Admin" role:
+ * Admin Dashboard:
+   * Show global analytics cards: "Total Users", "Pending KYC", "Pending Withdrawals".
+ * User Management:
+   * A full CRUD table for the Users table. Admins must be able to search, view, create, edit, and deactivate all users.
+   * Admins must be able to manually edit a user's role, kyc_status, and membership_tier.
+ * KYC Management Queue:
+   * A table of all KYC_Submissions with a "Pending" status.
+   * Admin must be able to view the document_image_url and "Approve" or "Reject" the submission (this should update the KYC_Submissions status and the user's kyc_status).
+ * Transaction & Wallet Oversight:
+   * A table of all "Pending" Transactions (Withdrawals). Admin must be able to "Approve" or "Reject" them.
+   * A tool for "Manual Credit/Debit": A form that allows an Admin to select a user, select a wallet, and add or subtract from their balance (must log this in Transactions with a "manual" type).
+5. Customer Service (CS) Portal
+Create the following pages, visible only to the "Customer Service" role:
+ * CS Dashboard (Ticket Queue):
+   * A table of all "Open" Support_Tickets. CS agents can view and respond.
+ * User Lookup (Read-Only):
+   * A search bar to find a user by email.
+   * Displays read-only information for the found user:
+     * Basic Info (Email, Role, KYC Status)
+     * Read-only table of their Trades
+     * Read-only table of their Transactions
+     * Read-only table of their Wallets
+
+
+6. TradingView Widget Integration
+On the Trader Dashboard and Live Trading pages, please insert this exact HTML embed code into an HTML block:
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COMEX:GC1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+
+
+🪙 Crypto
+These widgets cover the major cryptocurrency pairs.
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COINBASE:BTCUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COINBASE:ETHUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COINBASE:SOLUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=BINANCE:BNBUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+💵 Fiat / Forex
+These cover the major global currency pairs.
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=OANDA:EURUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=OANDA:GBPUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=OANDA:USDJPY&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=OANDA:AUDUSD&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+🛢️ Commodities
+This is the full list you provided in your original detailed prompt, which are the correct futures contracts.
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COMEX:GC1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COMEX:SI1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=NYMEX:CL1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=ICEEUR:BRN1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=NYMEX:NG1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=COMEX:HG1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=NYMEX:PL1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+<iframe src="https://www.tradingview.com/widgetembed/?symbol=NYMEX:PA1!&interval=1D&theme=dark" width="100%" height="400" frameborder="0"></iframe>
+
+Pro-Tip: For your MVP, just copy and paste the <iframe> codes you want directly onto the Live Trading and Dashboard pages. Later, you can build a dropdown menu that dynamically changes the src attribute of a single <iframe> block, but that requires custom state management/logic.
