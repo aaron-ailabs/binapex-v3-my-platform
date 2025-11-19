@@ -5,7 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string) => void; 
+  login: (email: string, password?: string) => boolean; 
+  register: (name: string, email: string, password: string) => void;
   logout: () => void;
   isLoading: boolean;
 }
@@ -28,28 +29,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = (email: string) => {
-    // Simple mock login - finds user by email
-    const found = db.getUsers().find(u => u.email === email);
+  const login = (email: string, password?: string) => {
+    const found = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
+    
     if (found) {
+      // Verify password (mock check)
+      if (password && found.password && found.password !== password) {
+        toast({
+          variant: "destructive",
+          title: "Invalid Credentials",
+          description: "The password you entered is incorrect.",
+        });
+        return false;
+      }
+
       setUser(found);
       localStorage.setItem('binapex_user_id', found.id);
       toast({
         title: "Welcome back",
-        description: `Logged in as ${found.name} (${found.role})`,
+        description: `Logged in as ${found.name}`,
       });
       
       // Redirect based on role
       if (found.role === 'Admin') setLocation('/admin');
       else if (found.role === 'Customer Service') setLocation('/cs');
       else setLocation('/dashboard');
+      return true;
     } else {
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: "User not found. Try 'trader@binapex.com', 'admin@binapex.com', etc.",
+        description: "User not found.",
       });
+      return false;
     }
+  };
+
+  const register = (name: string, email: string, password: string) => {
+    const existing = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (existing) {
+      toast({
+        variant: "destructive",
+        title: "Registration Failed",
+        description: "Email already in use.",
+      });
+      return;
+    }
+
+    const newUser: User = {
+      id: Math.random().toString(36).substr(2, 9),
+      email,
+      name,
+      password,
+      role: 'Trader', // Default role
+      kyc_status: 'Not Started',
+      membership_tier: 'Bronze'
+    };
+
+    db.addUser(newUser);
+    login(email, password);
   };
 
   const logout = () => {
@@ -59,7 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
