@@ -57,51 +57,51 @@
 }
 
 :root {
-  /* Default Dark Theme "Binapex" - Premium Fintech */
-  --background: 222 47% 11%; /* Deep Dark Blue #0f172a */
-  --foreground: 210 40% 98%; /* Whiteish */
+  /* Default Dark Theme "Binapex" - Black & Gold Executive */
+  --background: 230 25% 5%; /* Rich near-black */
+  --foreground: 42 33% 92%; /* Warm off-white */
 
-  --card: 222 47% 14%; /* Slightly lighter dark blue */
-  --card-foreground: 210 40% 98%;
+  --card: 229 21% 10%;
+  --card-foreground: 42 33% 92%;
 
-  --popover: 222 47% 14%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 229 21% 8%;
+  --popover-foreground: 42 33% 92%;
 
-  --primary: 45 93% 47%; /* Gold #f59e0b */
-  --primary-foreground: 222 47% 11%; /* Dark text on Gold */
+  --primary: 44 77% 56%; /* Luxe gold */
+  --primary-foreground: 229 45% 10%;
 
-  --secondary: 217 33% 17%; /* Muted Blue-Grey */
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 220 15% 13%;
+  --secondary-foreground: 42 33% 92%;
 
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
+  --muted: 220 15% 18%;
+  --muted-foreground: 42 15% 70%;
 
-  --accent: 189 94% 43%; /* Cyan #06b6d4 */
-  --accent-foreground: 222 47% 11%;
+  --accent: 39 66% 53%; /* Soft amber for accents */
+  --accent-foreground: 229 45% 10%;
 
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 359 82% 60%;
+  --destructive-foreground: 33 26% 96%;
 
-  --border: 217 33% 20%;
-  --input: 217 33% 20%;
-  --ring: 45 93% 47%;
+  --border: 220 16% 25%; 
+  --input: 220 16% 20%;
+  --ring: 44 77% 56%;
 
-  --radius: 0.5rem;
+  --radius: 0.75rem;
 
-  --chart-1: 45 93% 47%;  /* Gold */
-  --chart-2: 189 94% 43%; /* Cyan */
-  --chart-3: 142 76% 36%; /* Green */
-  --chart-4: 262 83% 58%; /* Purple */
-  --chart-5: 340 82% 52%; /* Pink */
+  --chart-1: 44 77% 56%;
+  --chart-2: 195 89% 46%;
+  --chart-3: 145 63% 45%;
+  --chart-4: 276 67% 55%;
+  --chart-5: 6 78% 60%;
 
-  --sidebar: 222 47% 10%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 45 93% 47%;
-  --sidebar-primary-foreground: 222 47% 11%;
-  --sidebar-accent: 217 33% 17%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-border: 217 33% 20%;
-  --sidebar-ring: 45 93% 47%;
+  --sidebar: 230 26% 6%;
+  --sidebar-foreground: 42 33% 92%;
+  --sidebar-primary: 44 77% 56%;
+  --sidebar-primary-foreground: 229 45% 10%;
+  --sidebar-accent: 220 15% 13%;
+  --sidebar-accent-foreground: 42 33% 92%;
+  --sidebar-border: 220 16% 20%;
+  --sidebar-ring: 44 77% 56%;
 }
 
 /* Force dark mode by default since the prompt asks for "Dark-first" */
