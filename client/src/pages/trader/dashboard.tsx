@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import TradingViewWidget from '@/components/tradingview-widget';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Wallet as WalletIcon, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { toUSD, fmtUSD } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 
 export default function TraderDashboard() {
@@ -18,11 +19,7 @@ export default function TraderDashboard() {
     }
   }, [user]);
 
-  const totalBalance = wallets.reduce((sum, w) => {
-    // Very rough estimation: 1 BTC = 50000 USD for aggregate view
-    const val = w.asset_name === 'BTC' ? w.balance * 50000 : w.balance;
-    return sum + val;
-  }, 0);
+  const totalBalance = wallets.reduce((sum, w) => sum + toUSD(w.asset_name, w.balance), 0);
 
   const totalPayouts = trades
     .filter(t => t.result === 'Win')
@@ -42,7 +39,7 @@ export default function TraderDashboard() {
             <WalletIcon className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">${totalBalance.toLocaleString()}</div>
+            <div className="text-2xl font-bold text-primary">{fmtUSD(totalBalance)}</div>
             <p className="text-xs text-muted-foreground">+20.1% from last month</p>
           </CardContent>
         </Card>
@@ -94,7 +91,7 @@ export default function TraderDashboard() {
                 {wallets.map((wallet) => (
                   <TableRow key={wallet.id}>
                     <TableCell className="font-medium">{wallet.asset_name}</TableCell>
-                    <TableCell className="text-right">{wallet.balance.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">{fmtUSD(toUSD(wallet.asset_name, wallet.balance))}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

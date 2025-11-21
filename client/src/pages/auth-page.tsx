@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { ShieldCheck } from 'lucide-react';
 
@@ -21,12 +21,13 @@ export default function AuthPage() {
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
 
-  if (user) {
-    if (user.role === 'Admin') setLocation('/admin');
-    else if (user.role === 'Customer Service') setLocation('/cs');
-    else setLocation('/dashboard');
-    return null;
-  }
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'Admin') setLocation('/admin');
+      else if (user.role === 'Customer Service') setLocation('/cs');
+      else setLocation('/dashboard');
+    }
+  }, [user, setLocation]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();

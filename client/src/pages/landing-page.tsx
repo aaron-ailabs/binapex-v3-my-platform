@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -83,6 +83,27 @@ export default function LandingPage() {
   const [, setLocation] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [imgReady, setImgReady] = useState<Record<string, boolean>>({});
+
+  const toProxy = (url: string) => `/api/assets/proxy?url=${encodeURIComponent(url)}`;
+
+  useEffect(() => {
+    const timers: number[] = [];
+    CAROUSEL_SLIDES.forEach((s) => {
+      if (imgReady[s.image]) return;
+      const img = new Image();
+      img.onload = () => setImgReady((prev) => ({ ...prev, [s.image]: true }));
+      img.onerror = () => setImgReady((prev) => ({ ...prev, [s.image]: false }));
+      img.src = toProxy(s.image);
+      const t = window.setTimeout(() => {
+        setImgReady((prev) => ({ ...prev, [s.image]: prev[s.image] ?? false }));
+      }, 1500);
+      timers.push(t);
+    });
+    return () => {
+      timers.forEach((t) => window.clearTimeout(t));
+    };
+  }, []);
 
   // If logged in, we shouldn't really be here typically, but if we are, we show the landing page 
   // with a "Go to Dashboard" button instead of Login.
@@ -172,8 +193,8 @@ export default function LandingPage() {
           >
             {/* Background Image with Overlay */}
             <div 
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url(${slide.image})` }}
+              className={cn("absolute inset-0 bg-cover bg-center", !imgReady[slide.image] ? "bg-gradient-to-br from-[#0a0a0a] to-[#111]" : "")}
+              style={imgReady[slide.image] ? { backgroundImage: `url(${toProxy(slide.image)})` } : undefined}
             />
             <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black" />
