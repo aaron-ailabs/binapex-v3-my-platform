@@ -1,4 +1,5 @@
 import { db, User, Wallet, Trade, Transaction } from '@/lib/mock-data';
+import { fmtUSD, toUSD } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -98,7 +99,7 @@ export default function UserLookup() {
                           {userData.wallets.map(w => (
                              <TableRow key={w.id}>
                                 <TableCell>{w.asset_name}</TableCell>
-                                <TableCell>{w.balance}</TableCell>
+                                <TableCell>{fmtUSD(toUSD(w.asset_name, w.balance))}</TableCell>
                              </TableRow>
                           ))}
                        </TableBody>
