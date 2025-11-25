@@ -26,6 +26,8 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      "react": path.resolve(import.meta.dirname, "node_modules", "react"),
+      "react-dom": path.resolve(import.meta.dirname, "node_modules", "react-dom"),
     },
   },
   css: {
@@ -41,6 +43,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
+    hmr: { port: 5000, clientPort: 5000 },
     fs: {
       strict: true,
       deny: ["**/.*"],

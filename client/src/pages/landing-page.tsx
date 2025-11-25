@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense, memo } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,6 +25,7 @@ import {
   BarChart2
 } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { apiRequest } from '@/lib/queryClient';
 import { cn } from '@/lib/utils';
 
 // Carousel Data
@@ -103,6 +104,8 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [imgReady, setImgReady] = useState<Record<string, boolean>>({});
   const [chatOpen, setChatOpen] = useState(false);
+  const [fx, setFx] = useState<Record<string, number>>({});
+  const [fxSpreadText, setFxSpreadText] = useState<string>('');
 
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const esRef = useRef<EventSource | null>(null);
@@ -111,6 +114,22 @@ export default function LandingPage() {
   const [visiblePrices, setVisiblePrices] = useState<Record<string, number>>({});
   const tickerTimerRef = useRef<number | null>(null);
   const pricesRef = useRef<Record<string, number>>({});
+
+  const HeroTicker = memo(function HeroTicker({ prices }: { prices: Record<string, number> }) {
+    return (
+      <div aria-label="Live market ticker" aria-live="polite" className="flex gap-8 whitespace-nowrap">
+        {HERO_TICKER.map((t) => {
+          const p = prices[t.symbol];
+          return (
+            <div key={t.symbol} className="flex items-center gap-3 text-sm">
+              <span className="text-gray-400">{t.label}</span>
+              <span className="font-mono">{typeof p === 'number' ? p.toFixed(2) : '—'}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  });
 
   const toProxy = (url: string) => `/api/assets/proxy?url=${encodeURIComponent(url)}`;
 
@@ -126,6 +145,40 @@ export default function LandingPage() {
     return () => {
       timers.forEach((t) => window.clearTimeout(t));
     };
+  }, []);
+
+  useEffect(() => {
+    const pairs = ['FX:EURUSD','FX:USDJPY','FX:GBPUSD'];
+    const fetchFx = async () => {
+      const out: Record<string, number> = {};
+      for (const s of pairs) {
+        try {
+          const res = await apiRequest('GET', `/api/prices/alpha?symbol=${encodeURIComponent(s)}`);
+          const j = await res.json();
+          if (typeof j?.price === 'number') out[s] = j.price;
+        } catch {}
+      }
+      setFx(out);
+      const eur = out['FX:EURUSD'];
+      const jpy = out['FX:USDJPY'];
+      const gbp = out['FX:GBPUSD'];
+      const spreadCalc = (p: number, jpyPair: boolean) => {
+        const tick = p * (jpyPair ? 0.0002 : 0.00002);
+        const bid = p - tick;
+        const ask = p + tick;
+        const spread = ask - bid;
+        const pipFactor = jpyPair ? 100 : 10000;
+        return (spread * pipFactor).toFixed(2);
+      };
+      const eurS = typeof eur === 'number' ? spreadCalc(eur, false) : null;
+      const jpyS = typeof jpy === 'number' ? spreadCalc(jpy, true) : null;
+      const gbpS = typeof gbp === 'number' ? spreadCalc(gbp, false) : null;
+      const txt = [eurS ? `EUR/USD ~ ${eurS} pips` : null, jpyS ? `USD/JPY ~ ${jpyS} pips` : null, gbpS ? `GBP/USD ~ ${gbpS} pips` : null].filter(Boolean).join(' • ');
+      setFxSpreadText(txt);
+    };
+    fetchFx();
+    const iv = window.setInterval(fetchFx, 30000);
+    return () => { try { window.clearInterval(iv); } catch {} };
   }, []);
 
   useEffect(() => {
@@ -196,11 +249,15 @@ export default function LandingPage() {
     window.addEventListener('online', onOnline);
     const iv = window.setInterval(() => {
       const next: Record<string, number> = {};
+      let changed = false;
       for (const t of HERO_TICKER) {
         const v = pricesRef.current[t.symbol];
-        if (typeof v === 'number') next[t.symbol] = v;
+        if (typeof v === 'number') {
+          next[t.symbol] = v;
+          if (!changed && visiblePrices[t.symbol] !== v) changed = true;
+        }
       }
-      setVisiblePrices(next);
+      if (changed) setVisiblePrices(next);
     }, 5000);
 
     return () => {
@@ -254,9 +311,9 @@ export default function LandingPage() {
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-8">
             <div className="flex items-center gap-4 text-sm font-medium text-gray-400">
-              <button className="hover:text-primary transition-colors">Markets</button>
-              <button className="hover:text-primary transition-colors">Products</button>
-              <button className="hover:text-primary transition-colors">Institutional</button>
+              <button className="hover:text-primary transition-colors" onClick={() => setLocation('/markets')} aria-label="Markets">Markets</button>
+              <button className="hover:text-primary transition-colors" onClick={() => setLocation('/products')} aria-label="Products">Products</button>
+              <button className="hover:text-primary transition-colors" onClick={() => setLocation('/institutional')} aria-label="Institutional">Institutional</button>
             </div>
             
             <Button 
@@ -369,17 +426,7 @@ export default function LandingPage() {
         <div className="absolute bottom-0 left-0 right-0 z-20">
           <div className="bg-black/60 backdrop-blur-md border-t border-white/10">
             <div className="max-w-7xl mx-auto px-4 py-3 overflow-hidden">
-              <div ref={tickerContainerRef} aria-label="Live market ticker" aria-live="polite" className="flex gap-8 whitespace-nowrap">
-                {HERO_TICKER.map((t) => {
-                  const p = visiblePrices[t.symbol];
-                  return (
-                    <div key={t.symbol} className="flex items-center gap-3 text-sm">
-                      <span className="text-gray-400">{t.label}</span>
-                      <span className="font-mono">{typeof p === 'number' ? p.toFixed(2) : '—'}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <HeroTicker prices={visiblePrices} />
             </div>
           </div>
         </div>
@@ -576,7 +623,7 @@ export default function LandingPage() {
             </div>
             <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
               <h3 className="text-xl font-bold mb-3">Forex</h3>
-              <p className="text-gray-400 mb-4">Major currency pairs with competitive spreads.</p>
+              <p className="text-gray-400 mb-4">Major pairs with indicative spreads: {fxSpreadText || '—'}</p>
               <div className="text-sm text-gray-300">EUR/USD • USD/JPY • GBP/USD</div>
             </div>
             <div className="bg-white/5 p-6 rounded-2xl border border-white/10">

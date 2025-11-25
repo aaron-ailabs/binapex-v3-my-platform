@@ -25,6 +25,9 @@ import AdminBanks from "@/pages/admin/banks";
 import AdminTrading from "@/pages/admin/trading";
 import AdminAudit from "@/pages/admin/audit";
 import AdminSettings from "@/pages/admin/settings";
+import Markets from "@/pages/marketing/markets";
+import Products from "@/pages/marketing/products";
+import Institutional from "@/pages/marketing/institutional";
 import AdminAllocations from "@/pages/admin/allocations";
 
 import CSDashboard from "@/pages/cs/dashboard";
@@ -56,18 +59,13 @@ function Router() {
   return (
     <Switch>
       {/* Public Routes */}
-      <Route path="/">
-         {/* If user is logged in, redirect to dashboard, otherwise show Landing Page */}
-         {/* Wait for auth loading to complete before deciding */}
-         {() => {
-           const { user, isLoading } = useAuth();
-           if (isLoading) return null; // Or a loading spinner
-           return user ? <Redirect to="/dashboard" /> : <LandingPage />;
-         }}
-      </Route>
+      <Route path="/" component={HomeRoute} />
       
       <Route path="/auth" component={AuthPage} />
       <Route path="/auth/reset-password" component={ResetPasswordPage} />
+      <Route path="/markets" component={Markets} />
+      <Route path="/products" component={Products} />
+      <Route path="/institutional" component={Institutional} />
       
       {/* Trader Routes */}
       <Route path="/dashboard">
@@ -150,3 +148,13 @@ function App() {
 }
 
 export default App;
+
+function HomeRoute() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  return user ? <Redirect to="/dashboard" /> : (
+    <Layout>
+      <LandingPage />
+    </Layout>
+  );
+}
