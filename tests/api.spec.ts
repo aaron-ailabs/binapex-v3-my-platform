@@ -4,9 +4,9 @@ const base = 'http://127.0.0.1:5000'
 
 async function json(url: string, init?: RequestInit) {
   const r = await fetch(url, init)
-  const ct = r.headers.get('content-type') || ''
-  const isJson = ct.includes('application/json')
-  const body = isJson ? await r.json() : await r.text()
+  const t = await r.text()
+  let body: any = t
+  try { body = JSON.parse(t) } catch {}
   return { ok: r.ok, status: r.status, body }
 }
 
@@ -91,6 +91,10 @@ async function run() {
   const events = await json(`${base}/api/security/events`, { headers: authHeaders })
   assert.equal(events.ok, true)
   assert.ok(Array.isArray(events.body))
+
+  const proxyResp = await fetch(`${base}/api/assets/proxy?url=${encodeURIComponent('https://images.unsplash.com/this-does-not-exist')}`)
+  const ct = proxyResp.headers.get('content-type') || ''
+  assert.ok(ct.includes('image/png'))
 
   process.stdout.write('API tests completed successfully\n')
 }

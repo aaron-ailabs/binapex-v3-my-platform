@@ -16,36 +16,32 @@ export default function LiveTrading() {
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
   const [duration, setDuration] = useState('1M');
+  const [alertPrice, setAlertPrice] = useState('');
+  const [alertDirection, setAlertDirection] = useState('above');
 
-  const forexAssets = [ 
-    { name: 'USD/SGD', symbol: 'FX:USDSGD' }, 
-    { name: 'USD/PHP', symbol: 'FX:USDPHP' }, 
-    { name: 'USD/NZD', symbol: 'FX:USDNZD' }, 
-    { name: 'EUR/USD', symbol: 'FX:EURUSD' }, 
-    { name: 'USD/MYR', symbol: 'FX:USDMYR' }, 
-    { name: 'AUD/USD', symbol: 'FX:AUDUSD' }, 
-    { name: 'GBP/USD', symbol: 'FX:GBPUSD' }, 
-    { name: 'USD/JPY', symbol: 'FX:USDJPY' }, 
-    { name: 'USD/THB', symbol: 'FX:USDTHB' }, 
-    { name: 'USD/IDR', symbol: 'FX:USDIDR' }, 
-    { name: 'USD/HKD', symbol: 'FX:USDHKD' }, 
-    { name: 'USD/KRW', symbol: 'FX:USDKRW' }, 
+  const forexAssets = [
+    { name: 'EUR/USD', symbol: 'BLACKBULL:EURUSD' },
+    { name: 'GBP/USD', symbol: 'BLACKBULL:GBPUSD' },
+    { name: 'USD/JPY', symbol: 'BLACKBULL:USDJPY' },
+    { name: 'GBP/JPY', symbol: 'BLACKBULL:GBPJPY' },
+    { name: 'AUD/USD', symbol: 'BLACKBULL:AUDUSD' },
+    { name: 'USD/CHF', symbol: 'BLACKBULL:USDCHF' },
+    { name: 'NZD/USD', symbol: 'BLACKBULL:NZDUSD' },
+    { name: 'USD/SGD', symbol: 'BLACKBULL:USDSGD' },
+    { name: 'MYR/USD', symbol: 'FX_IDC:MYRUSD' },
+    { name: 'MYR/THB', symbol: 'FX_IDC:MYRTHB' },
   ];
  
-  const stockAssets = [ 
-    { name: 'KOPI', symbol: 'MYX:KOPI' }, 
-    { name: 'PJBUMI', symbol: 'MYX:PJBUMI' }, 
-    { name: 'MITRA', symbol: 'MYX:MITRA' }, 
-    { name: 'LSH', symbol: 'MYX:LSH' }, 
-    { name: 'CVIEW', symbol: 'MYX:CVIEW' }, 
-    { name: 'GDB Holdings', symbol: 'MYX:GDB' }, 
-    { name: 'NADIBHD', symbol: 'MYX:NADIBHD' }, 
-    { name: 'RAMSSOL', symbol: 'MYX:RAMSSOL' }, 
-    { name: 'HARNLEN', symbol: 'MYX:HARNLEN' }, 
-    { name: 'BNASTRA', symbol: 'MYX:BNASTRA' }, 
-    { name: 'EDGENTA', symbol: 'MYX:EDGENTA' }, 
-    { name: 'KERJAYA', symbol: 'MYX:KERJAYA' }, 
-    { name: 'ECOSHOP', symbol: 'MYX:ECOSHOP' }, 
+  const stockAssets = [
+    { name: 'NVIDIA', symbol: 'NASDAQ:NVDA' },
+    { name: 'Tesla', symbol: 'NASDAQ:TSLA' },
+    { name: 'Apple', symbol: 'NASDAQ:AAPL' },
+    { name: 'Meta', symbol: 'NASDAQ:META' },
+    { name: 'Amazon', symbol: 'NASDAQ:AMZN' },
+    { name: 'Palantir', symbol: 'NASDAQ:PLTR' },
+    { name: 'Microsoft', symbol: 'NASDAQ:MSFT' },
+    { name: 'Netflix', symbol: 'NASDAQ:NFLX' },
+    { name: 'Alibaba', symbol: 'NYSE:BABA' },
   ];
  
   const commodityAssets = [ 
@@ -63,19 +59,16 @@ export default function LiveTrading() {
     { name: 'Copper', symbol: 'COMEX:HG1!' }, 
   ];
  
-  const cryptoAssets = [ 
-    { name: 'Tether', symbol: 'BINANCE:USDTUSD' }, 
-    { name: 'UniSwap', symbol: 'BINANCE:UNIUSD' }, 
-    { name: 'Bitcoin', symbol: 'BINANCE:BTCUSDT' }, 
-    { name: 'Solana', symbol: 'BINANCE:SOLUSDT' }, 
-    { name: 'Cardano', symbol: 'BINANCE:ADAUSDT' }, 
-    { name: 'Litecoin', symbol: 'BINANCE:LTCUSDT' }, 
-    { name: 'Dogecoin', symbol: 'BINANCE:DOGEUSDT' }, 
-    { name: 'Polygon', symbol: 'BINANCE:MATICUSDT' }, 
-    { name: 'Ethereum', symbol: 'BINANCE:ETHUSDT' }, 
-    { name: 'Chainlink', symbol: 'BINANCE:LINKUSDT' }, 
-    { name: 'Ethereum Classic', symbol: 'BINANCE:ETCUSDT' }, 
-    { name: 'Bitcoin Cash', symbol: 'BINANCE:BCHUSDT' }, 
+  const cryptoAssets = [
+    { name: 'Bitcoin', symbol: 'BINANCE:BTCUSDT' },
+    { name: 'Ethereum', symbol: 'BINANCE:ETHUSDT' },
+    { name: 'Solana', symbol: 'BINANCE:SOLUSDT' },
+    { name: 'XRP', symbol: 'BINANCE:XRPUSDT' },
+    { name: 'BNB', symbol: 'BINANCE:BNBUSDT' },
+    { name: 'Dogecoin', symbol: 'BINANCE:DOGEUSDT' },
+    { name: 'Zcash', symbol: 'BINANCE:ZECUSDT' },
+    { name: 'Litecoin', symbol: 'BINANCE:LTCUSDT' },
+    { name: 'TRON', symbol: 'BINANCE:TRXUSDT' },
   ];
 
   const [category, setCategory] = useState<'Forex' | 'Stocks' | 'Commodities' | 'Crypto'>('Crypto');
@@ -247,15 +240,71 @@ export default function LiveTrading() {
                  </SelectContent>
                </Select>
              </div>
-           </div>
+          </div>
         </div>
         
         <Card className="h-[600px] border-primary/20 bg-card/50 backdrop-blur-sm">
           <CardContent className="p-0 h-full">
-            <TradingViewWidget 
-                symbol={assetSymbol} 
-                height="100%" 
-            />
+            {category === 'Crypto' ? (
+              <TradingViewWidget
+                overviewSymbols={[
+                  'BINANCE:BTCUSDT|ALL',
+                  'BINANCE:ETHUSDT|ALL',
+                  'BINANCE:SOLUSDT|ALL',
+                  'BINANCE:XRPUSDT|ALL',
+                  'BINANCE:BNBUSDT|ALL',
+                  'BINANCE:DOGEUSDT|ALL',
+                  'BINANCE:ZECUSDT|ALL',
+                  'BINANCE:LTCUSDT|ALL',
+                  'BINANCE:TRXUSDT|ALL',
+                ]}
+                height="100%"
+              />
+            ) : category === 'Forex' ? (
+              <TradingViewWidget
+                overviewSymbols={[
+                  'BLACKBULL:EURUSD|ALL',
+                  'BLACKBULL:GBPUSD|ALL',
+                  'BLACKBULL:USDJPY|ALL',
+                  'BLACKBULL:GBPJPY|ALL',
+                  'BLACKBULL:AUDUSD|ALL',
+                  'BLACKBULL:USDCHF|ALL',
+                  'BLACKBULL:NZDUSD|ALL',
+                  'BLACKBULL:USDSGD|ALL',
+                  'FX_IDC:MYRUSD|ALL',
+                  'FX_IDC:MYRTHB|ALL',
+                ]}
+                height="100%"
+              />
+            ) : category === 'Stocks' ? (
+              <TradingViewWidget
+                overviewSymbols={[
+                  'NASDAQ:NVDA|ALL',
+                  'NASDAQ:TSLA|ALL',
+                  'NASDAQ:AAPL|ALL',
+                  'NASDAQ:META|ALL',
+                  'NASDAQ:AMZN|ALL',
+                  'NASDAQ:PLTR|ALL',
+                  'NASDAQ:MSFT|ALL',
+                  'NASDAQ:NFLX|ALL',
+                  'NYSE:BABA|ALL',
+                ]}
+                height="100%"
+              />
+            ) : (
+              <TradingViewWidget
+                advancedSymbol={assetSymbol}
+                advancedOptions={{
+                  interval: '1D',
+                  hide_side_toolbar: false,
+                  hide_top_toolbar: false,
+                  withdateranges: true,
+                  studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies','BB@tv-basicstudies'],
+                }}
+                watchlist={commodityAssets.map(c => c.symbol)}
+                height="100%"
+              />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -292,6 +341,42 @@ export default function LiveTrading() {
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">24h Low</span>
               <span className="font-mono">$47,500.00</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input placeholder="Alert price" value={alertPrice} onChange={(e) => setAlertPrice(e.target.value)} className="w-28" />
+              <Select value={alertDirection} onValueChange={setAlertDirection}>
+                <SelectTrigger className="w-28">
+                  <SelectValue placeholder="Direction" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="above">Above</SelectItem>
+                  <SelectItem value="below">Below</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" onClick={async () => {
+                const t = Number(alertPrice);
+                if (!Number.isFinite(t) || t <= 0) {
+                  toast({ variant: 'destructive', title: 'Invalid price', description: 'Enter a valid price target.' });
+                  return;
+                }
+                try {
+                  const res = await fetch(`${apiBase}/alerts/price`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                    body: JSON.stringify({ symbol: assetSymbol, target: t, direction: alertDirection })
+                  });
+                  if (res.ok) {
+                    toast({ title: 'Alert Added', description: `Alert when ${assetName} ${alertDirection} ${t}` });
+                    setAlertPrice('');
+                  } else {
+                    let msg = 'Failed to add alert.';
+                    try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
+                    toast({ variant: 'destructive', title: 'Error', description: msg });
+                  }
+                } catch {
+                  toast({ variant: 'destructive', title: 'Error', description: 'Failed to add alert.' });
+                }
+              }}>Add Alert</Button>
             </div>
           </CardContent>
         </Card>

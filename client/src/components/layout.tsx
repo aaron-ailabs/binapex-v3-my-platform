@@ -115,14 +115,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     let mounted = true;
     const init = async () => {
       try {
-        const res = await fetch('/api/notifications?unread=1', { credentials: 'include' });
+        const token = localStorage.getItem('token') || '';
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await fetch('/api/notifications?unread=1', { credentials: 'include', headers });
         if (res.ok) {
           const list = await res.json();
           if (mounted) setUnreadCount(Array.isArray(list) ? list.length : 0);
         }
       } catch {}
       try {
-        es = new EventSource('/api/notifications/stream', { withCredentials: true } as any);
+        const token = localStorage.getItem('token') || '';
+        const url = token ? `/api/notifications/stream?token=${encodeURIComponent(token)}` : '/api/notifications/stream';
+        es = new EventSource(url, { withCredentials: true } as any);
         es.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data || '{}');

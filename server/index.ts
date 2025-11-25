@@ -61,8 +61,9 @@ app.use((req, res, next) => {
         logLine = logLine.slice(0, 79) + "…";
       }
 
-      const windowMs = parseInt(process.env.LOG_WINDOW_MS || '60000', 10);
-      const maxLogs = parseInt(process.env.LOG_MAX || '5', 10);
+      const isDevEnv = app.get('env') === 'development';
+      const windowMs = parseInt(process.env.LOG_WINDOW_MS || (isDevEnv ? '30000' : '60000'), 10);
+      const maxLogs = parseInt(process.env.LOG_MAX || (isDevEnv ? '2' : '5'), 10);
       const nowTs = Date.now();
       const key = path;
       const existing = apiLogWindows.get(key);

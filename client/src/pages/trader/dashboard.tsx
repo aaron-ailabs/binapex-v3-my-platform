@@ -91,7 +91,17 @@ export default function TraderDashboard() {
             <CardTitle>Market Overview</CardTitle>
           </CardHeader>
           <CardContent className="pl-2">
-            <TradingViewWidget symbol="COINBASE:BTCUSD" height={350} />
+            <TradingViewWidget
+              overviewSymbols={[
+                'NASDAQ:NVDA|ALL',
+                'NASDAQ:TSLA|ALL',
+                'NASDAQ:AAPL|ALL',
+                'NASDAQ:META|ALL',
+                'NASDAQ:AMZN|ALL',
+                'NASDAQ:MSFT|ALL',
+              ]}
+              height={350}
+            />
           </CardContent>
         </Card>
 

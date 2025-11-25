@@ -73,6 +73,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     (req as any).user = payload;
     next();
   };
+  const requireAuthToken = (req: Request, res: Response, next: NextFunction) => {
+    const auth = req.headers.authorization || '';
+    let token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!token) token = String((req.query as any).token || '');
+    const payload = token ? verifyJWT(token) : null;
+    if (!payload) return res.status(401).json({ message: 'Unauthorized' });
+    (req as any).user = payload;
+    next();
+  };
   const requireRole = (roles: string[]) => (req: Request, res: Response, next: NextFunction) => {
     const u = (req as any).user;
     if (!u || !roles.includes(u.role)) return res.status(403).json({ message: 'Forbidden' });
@@ -222,7 +231,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const notificationClients = new Map<string, Set<any>>();
-  app.get('/api/notifications/stream', requireAuth, async (req: Request, res: Response) => {
+  app.get('/api/notifications/stream', requireAuthToken, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -334,9 +343,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const assets = new Map<string, { name: string; market: string; enabled: boolean }>();
   const seedAssets = () => {
     [
-      ['BINANCE:BTCUSDT','Bitcoin','Crypto'],['BINANCE:ETHUSDT','Ethereum','Crypto'],['BINANCE:SOLUSDT','Solana','Crypto'],
-      ['FX:EURUSD','EUR/USD','Forex'],['FX:USDSGD','USD/SGD','Forex'],['FX:USDJPY','USD/JPY','Forex'],
-      ['COMEX:GC1!','Gold','Commodities'],['NYMEX:CL1!','Crude Oil','Commodities']
+      ['BINANCE:BTCUSDT','Bitcoin','Crypto'],
+      ['BINANCE:ETHUSDT','Ethereum','Crypto'],
+      ['BINANCE:SOLUSDT','Solana','Crypto'],
+      ['BINANCE:XRPUSDT','XRP','Crypto'],
+      ['BINANCE:BNBUSDT','BNB','Crypto'],
+      ['BINANCE:DOGEUSDT','Dogecoin','Crypto'],
+      ['BINANCE:ZECUSDT','Zcash','Crypto'],
+      ['BINANCE:LTCUSDT','Litecoin','Crypto'],
+      ['BINANCE:TRXUSDT','TRON','Crypto'],
+      ['BLACKBULL:EURUSD','EUR/USD','Forex'],
+      ['BLACKBULL:GBPUSD','GBP/USD','Forex'],
+      ['BLACKBULL:USDJPY','USD/JPY','Forex'],
+      ['BLACKBULL:GBPJPY','GBP/JPY','Forex'],
+      ['BLACKBULL:AUDUSD','AUD/USD','Forex'],
+      ['BLACKBULL:USDCHF','USD/CHF','Forex'],
+      ['BLACKBULL:NZDUSD','NZD/USD','Forex'],
+      ['BLACKBULL:USDSGD','USD/SGD','Forex'],
+      ['FX_IDC:MYRUSD','MYR/USD','Forex'],
+      ['FX_IDC:MYRTHB','MYR/THB','Forex'],
+      ['NASDAQ:NVDA','NVIDIA','Stocks'],
+      ['NASDAQ:TSLA','Tesla','Stocks'],
+      ['NASDAQ:AAPL','Apple','Stocks'],
+      ['NASDAQ:META','Meta','Stocks'],
+      ['NASDAQ:AMZN','Amazon','Stocks'],
+      ['NASDAQ:PLTR','Palantir','Stocks'],
+      ['NASDAQ:MSFT','Microsoft','Stocks'],
+      ['NASDAQ:NFLX','Netflix','Stocks'],
+      ['NYSE:BABA','Alibaba','Stocks'],
+      ['FX:EURUSD','EUR/USD','Forex'],
+      ['FX:USDSGD','USD/SGD','Forex'],
+      ['FX:USDJPY','USD/JPY','Forex'],
+      ['COMEX:GC1!','Gold','Commodities'],
+      ['NYMEX:CL1!','Crude Oil','Commodities']
+      ,['COMEX:SI1!','Silver','Commodities']
+      ,['ICEUS:KC1!','Coffee','Commodities']
+      ,['NYMEX:NG1!','Natural Gas','Commodities']
+      ,['NYMEX:HO1!','Heating Oil','Commodities']
     ].forEach(([symbol,name,market]) => assets.set(symbol, { name, market, enabled: true }));
   };
   seedAssets();
@@ -952,6 +995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const adminTradeClients = new Set<any>();
   const priceAlerts = new Map<string, { userId: string; target: number; direction: 'above'|'below' }[]>();
   const tracked = new Set<string>();
+  const symbolSubscribers = new Map<string, number>();
   const cache = new Map<string, number>();
   const computeBase = (s: string) => Math.abs(s.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000 + 100;
   app.get('/api/prices/stream', (req: Request, res: Response) => {
@@ -971,17 +1015,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const s of symbols) {
         if (!cache.has(s)) cache.set(s, computeBase(s));
         tracked.add(s);
+        symbolSubscribers.set(s, (symbolSubscribers.get(s) || 0) + 1);
         res.write(`data: ${JSON.stringify({ symbol: s, price: cache.get(s) })}\n\n`);
       }
     }
     clients.add(res);
     req.on('close', () => {
       clients.delete(res);
+      if (symbols.length) {
+        for (const s of symbols) {
+          const prev = symbolSubscribers.get(s) || 0;
+          if (prev > 1) {
+            symbolSubscribers.set(s, prev - 1);
+          } else {
+            symbolSubscribers.delete(s);
+            tracked.delete(s);
+          }
+        }
+      }
       try { res.end(); } catch {}
     });
   });
 
   const tick = () => {
+    if (!clients.size) return;
     const list = tracked.size ? Array.from(tracked) : Array.from(cache.keys());
     for (const s of list) {
       const reg = assets.get(s);
@@ -1008,6 +1065,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
   setInterval(tick, 3000);
+
+  app.get('/api/_debug/streams', (_req: Request, res: Response) => {
+    const subs: Record<string, number> = {};
+    symbolSubscribers.forEach((v, k) => { subs[k] = v; });
+    res.json({ clients: clients.size, tracked: tracked.size, subscribers: subs });
+  });
 
   app.get('/api/admin/trades/stream', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');
