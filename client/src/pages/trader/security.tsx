@@ -9,19 +9,13 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
-<<<<<<< HEAD
 import { Eye, EyeOff, Shield, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
 export default function Security() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<User | null>(null);
-<<<<<<< HEAD
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
-  
-  // Withdrawal password state
   const [withdrawalPassword, setWithdrawalPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,16 +30,12 @@ export default function Security() {
   const [verificationChannel, setVerificationChannel] = useState<'email' | 'sms'>('email');
   const [verificationCode, setVerificationCode] = useState('');
   const [events, setEvents] = useState<any[]>([]);
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
   const handlePasswordUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     toast({ title: 'Password Updated', description: 'Your password has been changed successfully.' });
   };
 
-<<<<<<< HEAD
-  // Validate withdrawal password
   const validatePassword = (password: string) => {
     const requirements = {
       length: password.length >= 8,
@@ -54,12 +44,9 @@ export default function Security() {
       number: /[0-9]/.test(password),
       special: /[^A-Za-z0-9]/.test(password)
     };
-    
     const strength = Object.values(requirements).filter(Boolean).length * 20;
-    
     setPasswordRequirements(requirements);
     setPasswordStrength(strength);
-    
     return Object.values(requirements).every(Boolean);
   };
 
@@ -71,25 +58,14 @@ export default function Security() {
 
   const handleSetWithdrawalPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!validatePassword(withdrawalPassword)) {
-      toast({
-        variant: 'destructive',
-        title: 'Weak Password',
-        description: 'Please meet all password requirements.'
-      });
+      toast({ variant: 'destructive', title: 'Weak Password', description: 'Please meet all password requirements.' });
       return;
     }
-    
     if (withdrawalPassword !== confirmPassword) {
-      toast({
-        variant: 'destructive',
-        title: 'Passwords Mismatch',
-        description: 'Passwords do not match.'
-      });
+      toast({ variant: 'destructive', title: 'Passwords Mismatch', description: 'Passwords do not match.' });
       return;
     }
-    
     try {
       const res = await fetch(`${apiBase}/security/withdrawal-password`, {
         method: 'POST',
@@ -111,9 +87,6 @@ export default function Security() {
       toast({ variant: 'destructive', title: 'Error', description: error?.message || 'Failed to set withdrawal password.' });
     }
   };
-
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   useEffect(() => {
     if (user) {
       setProfile(user);
@@ -125,13 +98,10 @@ export default function Security() {
           db.updateUser(updated);
         })
         .catch(() => {});
-<<<<<<< HEAD
       fetch(`${apiBase}/security/events`, { headers: { Authorization: `Bearer ${localStorage.getItem('binapex_token') || ''}` } })
         .then(r => r.ok ? r.json() : [])
         .then(setEvents)
         .catch(() => {});
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     }
   }, [user]);
 

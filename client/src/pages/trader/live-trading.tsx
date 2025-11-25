@@ -82,10 +82,7 @@ export default function LiveTrading() {
   const [assetName, setAssetName] = useState('Bitcoin');
   const [assetSymbol, setAssetSymbol] = useState('BINANCE:BTCUSDT');
   const [spreadBps, setSpreadBps] = useState<number>(db.getEngineSettings().spreadBps);
-<<<<<<< HEAD
   const [payoutPct, setPayoutPct] = useState<number>(85);
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   const [price, setPrice] = useState<number | null>(null);
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const esRef = useRef<EventSource | null>(null);
@@ -101,7 +98,6 @@ export default function LiveTrading() {
   }, [category]);
 
   useEffect(() => {
-<<<<<<< HEAD
     (async () => {
       try {
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -114,16 +110,11 @@ export default function LiveTrading() {
       } catch {}
     })();
   }, [apiBase, token]);
-=======
-    setSpreadBps(db.getEngineSettings().spreadBps);
-  }, []);
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
   useEffect(() => {
     setPrice(null);
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
-<<<<<<< HEAD
     (async () => {
       try {
         const res = await fetch(`${apiBase}/prices/alpha?symbol=${encodeURIComponent(assetSymbol)}`);
@@ -133,8 +124,6 @@ export default function LiveTrading() {
         }
       } catch {}
     })();
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     const connect = () => {
       const url = `${apiBase}/prices/stream?symbols=${encodeURIComponent(assetSymbol)}`;
       const es = new EventSource(url);
@@ -168,14 +157,10 @@ export default function LiveTrading() {
       return;
     }
     
-<<<<<<< HEAD
     if (!user) {
       toast({ variant: 'destructive', title: 'Login Required', description: 'Please sign in to place trades.' });
       return;
     }
-=======
-    if (!user) return;
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     try {
       const fallback = Math.abs(assetSymbol.split('').reduce((s,c)=>s + c.charCodeAt(0),0)) % 1000 + 100;
       const body = { symbol: assetSymbol, asset: assetName, amount: Number(amount), direction, duration, entryPrice: price ?? fallback };
@@ -185,13 +170,9 @@ export default function LiveTrading() {
         body: JSON.stringify(body)
       });
       if (!res.ok) {
-<<<<<<< HEAD
         let msg = 'Could not place trade.';
         try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
         toast({ variant: 'destructive', title: 'Trade Failed', description: msg });
-=======
-        toast({ variant: 'destructive', title: 'Trade Failed', description: 'Could not place trade.' });
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
         return;
       }
       toast({ title: 'Trade Placed', description: `${direction} trade for $${amount} on ${assetName} opened.` });
