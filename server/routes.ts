@@ -2,7 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { createHmac } from "crypto";
+<<<<<<< HEAD
 import { validatePasswordStrength } from "./crypto";
+=======
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -64,6 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json((req as any).user);
   });
 
+<<<<<<< HEAD
   // Rate limiting middleware for security endpoints
   const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
   const requireRateLimit = (key: string, maxAttempts: number, windowMs: number) => {
@@ -188,6 +192,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+=======
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   app.get('/api/support/status', (_req, res) => {
     res.json(getPresence());
   });
@@ -219,11 +225,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ symbol, enabled: a.enabled });
   });
 
+<<<<<<< HEAD
   const engine = { spreadBps: 25, payoutPct: 85 };
+=======
+  const engine = { spreadBps: 25 };
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   app.get('/api/engine', requireAuth, (_req, res) => {
     res.json(engine);
   });
   app.post('/api/engine', requireAuth, requireRole(['Admin']), (req, res) => {
+<<<<<<< HEAD
     const { spreadBps, payoutPct } = req.body || {};
     if (typeof spreadBps !== 'undefined') {
       engine.spreadBps = Number(spreadBps || engine.spreadBps);
@@ -264,6 +275,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+=======
+    const { spreadBps } = req.body || {};
+    engine.spreadBps = Number(spreadBps || engine.spreadBps);
+    res.json(engine);
+  });
+
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   // Safe image proxy to avoid cross-origin blocks in preview envs
   app.get('/api/assets/proxy', async (req, res, next) => {
     try {
@@ -340,7 +358,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const wallets = new Map<string, { id: string; userId: string; assetName: string; balanceUsd: number }>();
+<<<<<<< HEAD
   const trades = new Map<string, { id: string; userId: string; asset: string; symbol: string; amount: number; direction: 'High'|'Low'; duration: string; entryPrice: number; exitPrice?: number; result: 'Win'|'Loss'|'Pending'; status: 'Open'|'Closed'; createdAt: string; settledUsd?: number; payoutPct?: number }>();
+=======
+  const trades = new Map<string, { id: string; userId: string; asset: string; symbol: string; amount: number; direction: 'High'|'Low'; duration: string; entryPrice: number; exitPrice?: number; result: 'Win'|'Loss'|'Pending'; status: 'Open'|'Closed'; createdAt: string; settledUsd?: number }>();
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   const adminAudits: { id: string; adminId: string; userId: string; action: string; details: string; timestamp: string }[] = [];
 
   const ensureUsdWallet = (userId: string) => {
@@ -368,16 +390,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/trades', requireAuth, (req, res) => {
     const userId = String(((req as any).user).sub || '');
     const { symbol, asset, amount, direction, duration } = req.body || {};
+<<<<<<< HEAD
     let reg = assets.get(String(symbol));
     if (!reg) {
       reg = { name: String(asset || 'Unknown'), market: 'Unknown', enabled: true };
       assets.set(String(symbol), reg);
     }
     if (!reg.enabled) return res.status(403).json({ message: 'Asset disabled' });
+=======
+    const reg = assets.get(String(symbol));
+    if (!reg || !reg.enabled) return res.status(403).json({ message: 'Asset disabled' });
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     const amt = Number(amount || 0);
     if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
     const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
     const id = Math.random().toString(36).slice(2,9);
+<<<<<<< HEAD
     const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
     trades.set(id, t);
     const parseMs = (d: string) => {
@@ -388,6 +416,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     const scale = Number(process.env.TRADING_DURATION_SCALE || '1');
     const ms = Math.max(1000, Math.floor(parseMs(t.duration) * (Number.isFinite(scale) && scale > 0 ? scale : 1)));
+=======
+    const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString() };
+    trades.set(id, t);
+    const ms = t.duration === '1M' ? 5000 : t.duration === '5M' ? 10000 : t.duration === '15M' ? 15000 : 20000;
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     setTimeout(() => {
       const move = (Math.random() * 2 - 1) * (engine.spreadBps / 10000) * 10;
       const exit = Number((t.entryPrice * (1 + move)).toFixed(2));
@@ -395,9 +428,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const win = (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
       const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss' };
       trades.set(id, updated);
+<<<<<<< HEAD
       const w = ensureUsdWallet(userId);
       const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
       const settled = win ? payout : -t.amount;
+=======
+      const profit = Number(((exit - t.entryPrice) * t.amount).toFixed(2));
+      const w = ensureUsdWallet(userId);
+      const settled = win ? Math.abs(profit) : -Math.abs(profit);
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
       w.balanceUsd = Number((w.balanceUsd + settled).toFixed(2));
       wallets.set(`${userId}:USD`, w);
       trades.set(id, { ...updated, settledUsd: settled });
@@ -414,8 +453,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const exit = typeof exitPrice === 'number' ? Number(exitPrice) : Number((t.entryPrice * (1 + 0.01)).toFixed(2));
     const wentUp = exit >= t.entryPrice;
     const win = result === 'Win' ? true : result === 'Loss' ? false : (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
+<<<<<<< HEAD
     const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
     const settled = win ? payout : -t.amount;
+=======
+    const profit = Number(((exit - t.entryPrice) * t.amount).toFixed(2));
+    const settled = win ? Math.abs(profit) : -Math.abs(profit);
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     const delta = Number((settled - prev).toFixed(2));
     const w = ensureUsdWallet(t.userId);
     w.balanceUsd = Number((w.balanceUsd + delta).toFixed(2));
@@ -443,6 +487,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true, wallet: w });
   });
 
+<<<<<<< HEAD
   app.post('/api/withdrawals', requireAuth, requireRateLimit('withdrawal', 5, 3600000), enforceTLS, async (req, res) => {
     const userId = String(((req as any).user).sub || '');
     const { amount, note, withdrawalPassword } = req.body || {};
@@ -482,6 +527,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       timestamp: new Date().toISOString() 
     });
     
+=======
+  app.post('/api/withdrawals', requireAuth, (req, res) => {
+    const userId = String(((req as any).user).sub || '');
+    const { amount, note } = req.body || {};
+    const amt = Number(amount || 0);
+    if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
+    const w = ensureUsdWallet(userId);
+    if (w.balanceUsd < amt) return res.status(400).json({ message: 'Insufficient balance' });
+    w.balanceUsd = Number((w.balanceUsd - amt).toFixed(2));
+    wallets.set(`${userId}:USD`, w);
+    adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'withdraw', details: JSON.stringify({ amount: amt, note }), timestamp: new Date().toISOString() });
+>>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     res.json({ ok: true, wallet: w });
   });
 
