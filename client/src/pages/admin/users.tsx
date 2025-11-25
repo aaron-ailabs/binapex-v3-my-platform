@@ -14,7 +14,8 @@ import { useToast } from '@/hooks/use-toast';
 
 export default function UserManagement() {
   const { toast } = useToast();
-  const { user: admin } = useAuth();
+  const { user: admin, token } = useAuth();
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -86,18 +87,28 @@ export default function UserManagement() {
     db.updateUser(updated);
   };
 
-  const applyOverrideScore = (e: React.FormEvent) => {
+  const applyOverrideScore = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser || !admin) return;
     if (!overrideReason.trim()) {
       toast({ variant: 'destructive', title: 'Reason required', description: 'Provide a reason for manual adjustment.' });
       return;
     }
-    const updated: User = { ...selectedUser, credit_score: overrideScore, credit_score_last_updated: new Date().toISOString() };
-    db.updateUser(updated);
-    setSelectedUser(updated);
-    db.addAdminLog({ id: Math.random().toString(36).slice(2,9), admin_id: admin.id, user_id: selectedUser.id, action: 'credit_score_adjustment', details: `Manual set to ${overrideScore}. Reason: ${overrideReason}`, timestamp: new Date().toISOString() });
-    toast({ title: 'Credit Score Updated', description: `Set to ${overrideScore}` });
+    try {
+      const r = await fetch(`${apiBase}/admin/credit-score/set`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+        body: JSON.stringify({ userId: selectedUser.id, score: overrideScore, reason: overrideReason })
+      });
+      if (!r.ok) throw new Error('Failed to update');
+      const d = await r.json();
+      const updated: User = { ...selectedUser, credit_score: d.score, credit_score_last_updated: new Date(d.lastUpdated).toISOString() };
+      setSelectedUser(updated);
+      db.updateUser(updated);
+      toast({ title: 'Credit Score Updated', description: `Set to ${d.score}` });
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to update credit score.' });
+    }
   };
 
   return (

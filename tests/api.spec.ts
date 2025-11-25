@@ -96,6 +96,29 @@ async function run() {
   const ct = proxyResp.headers.get('content-type') || ''
   assert.ok(ct.includes('image/png'))
 
+  const cfg = await json(`${base}/api/admin/credit-score/config`, {
+    method: 'POST', headers: authHeaders, body: JSON.stringify({ decimals: 0, rounding: 'nearest' })
+  })
+  assert.equal(cfg.ok, true)
+
+  const setScore = await json(`${base}/api/admin/credit-score/set`, {
+    method: 'POST', headers: authHeaders, body: JSON.stringify({ userId: '1', score: 735, reason: 'test' })
+  })
+  assert.equal(setScore.ok, true)
+  assert.equal(setScore.body.score, 735)
+
+  const loginTrader = await json(`${base}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'trader', password: 'password' })
+  })
+  assert.equal(loginTrader.ok, true)
+  const tToken = String(loginTrader.body.token || '')
+  assert.ok(tToken.length > 0)
+  const traderHeaders = { Authorization: `Bearer ${tToken}` }
+
+  const scoreResp = await json(`${base}/api/credit-score`, { headers: traderHeaders })
+  assert.equal(scoreResp.ok, true)
+  assert.equal(Number(scoreResp.body.score), 735)
+
   process.stdout.write('API tests completed successfully\n')
 }
 

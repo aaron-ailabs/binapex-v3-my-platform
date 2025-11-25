@@ -16,6 +16,7 @@ export default function Security() {
   const { toast } = useToast();
   const [profile, setProfile] = useState<User | null>(null);
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const { token } = useAuth();
   const [withdrawalPassword, setWithdrawalPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -119,6 +120,32 @@ export default function Security() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
+            <Label>Profile Picture</Label>
+            <input type="file" accept="image/*" onChange={async (e) => {
+              try {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const img = new Image();
+                img.onload = async () => {
+                  const size = Math.min(img.width, img.height);
+                  const sx = Math.floor((img.width - size)/2);
+                  const sy = Math.floor((img.height - size)/2);
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 256; canvas.height = 256;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  ctx.imageSmoothingQuality = 'high';
+                  ctx.drawImage(img, sx, sy, size, size, 0, 0, 256, 256);
+                  const dataUrl = canvas.toDataURL('image/png');
+                  const r = await fetch(`${apiBase}/profile/avatar`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ dataUrl }) });
+                  if (r.ok) toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated.' });
+                  else toast({ variant: 'destructive', title: 'Upload Failed' });
+                };
+                img.src = URL.createObjectURL(file);
+              } catch { toast({ variant: 'destructive', title: 'Upload Failed' }); }
+            }} />
+          </div>
+          <div className="space-y-2">
             <Label>Phone Number</Label>
             <Input value={profile?.phone || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : prev)} />
           </div>
@@ -136,7 +163,15 @@ export default function Security() {
             <Label>Detected IP Address</Label>
             <Input value={profile?.ip_address || ''} disabled />
           </div>
-          <Button onClick={() => { if (profile) { db.updateUser(profile); toast({ title: 'Profile Saved', description: 'Additional info updated.' }); } }}>Save Profile</Button>
+          <Button onClick={async () => {
+            if (!profile) return;
+            try {
+              const body: any = { phone: profile.phone, bank_account: profile.bank_account };
+              const r = await fetch(`${apiBase}/profile`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify(body) });
+              if (r.ok) { db.updateUser(profile); toast({ title: 'Profile Saved', description: 'Additional info updated.' }); }
+              else { toast({ variant: 'destructive', title: 'Save Failed' }); }
+            } catch { toast({ variant: 'destructive', title: 'Save Failed' }); }
+          }}>Save Profile</Button>
         </CardContent>
       </Card>
 

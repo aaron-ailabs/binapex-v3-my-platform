@@ -340,6 +340,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ sessionId: id });
   });
 
+  // Profile Management
+  type Profile = { name?: string; phone?: string; bank_account?: { bank_name: string; account_number: string; account_name?: string }; preferences?: Record<string, any> };
+  const userProfiles = new Map<string, Profile>();
+  const profileUpdateSchema = z.object({
+    name: z.string().min(1).max(120).optional(),
+    phone: z.string().min(5).max(32).optional(),
+    bank_account: z.object({ bank_name: z.string().min(2).max(120), account_number: z.string().min(2).max(64), account_name: z.string().min(2).max(120).optional() }).optional(),
+    preferences: z.record(z.any()).optional(),
+  });
+  app.get('/api/profile', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const base = await storage.getUser(userId);
+    const p = userProfiles.get(userId) || {};
+    res.json({ id: userId, email: base?.username, role: base?.role, name: p.name || base?.username, phone: p.phone || '', bank_account: p.bank_account || null, preferences: p.preferences || {} });
+  });
+  app.post('/api/profile', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const parsed = profileUpdateSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid profile data' });
+    const existing = userProfiles.get(userId) || {};
+    const updated = { ...existing, ...parsed.data };
+    userProfiles.set(userId, updated);
+    try { await storage.addSecurityEvent(userId, { type: 'verification', timestamp: new Date(), ipAddress: req.ip || 'unknown', status: 'success', details: 'Profile updated' }); } catch {}
+    res.json({ ok: true });
+  });
+  const avatars = new Map<string, { mime: string; data: Buffer }>();
+  const avatarSchema = z.object({ dataUrl: z.string().min(20).max(2_000_000) });
+  app.post('/api/profile/avatar', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const parsed = avatarSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid avatar data' });
+    const s = parsed.data.dataUrl;
+    const m = /^data:(.+);base64,(.+)$/.exec(s);
+    if (!m) return res.status(400).json({ message: 'Invalid data URL' });
+    const mime = m[1];
+    const b64 = m[2];
+    try {
+      const buf = Buffer.from(b64, 'base64');
+      avatars.set(userId, { mime, data: buf });
+      res.json({ ok: true });
+    } catch { return res.status(400).json({ message: 'Invalid image data' }); }
+  });
+  app.get('/api/profile/avatar/:userId', async (req: Request, res: Response) => {
+    const userId = String(req.params.userId || '');
+    const a = avatars.get(userId);
+    if (!a) return res.status(404).end();
+    res.setHeader('Content-Type', a.mime);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.end(a.data);
+  });
+
   const assets = new Map<string, { name: string; market: string; enabled: boolean }>();
   const seedAssets = () => {
     [
@@ -1070,6 +1121,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const subs: Record<string, number> = {};
     symbolSubscribers.forEach((v, k) => { subs[k] = v; });
     res.json({ clients: clients.size, tracked: tracked.size, subscribers: subs });
+  });
+
+  // Credit Score Management & Sync
+  const creditScores = new Map<string, { score: number; lastUpdated: number }>();
+  const creditScoreConfig = { decimals: 0, rounding: 'nearest' as 'nearest' | 'down' | 'up' };
+  const creditClients = new Map<string, Set<any>>();
+  const creditConfigSchema = z.object({ decimals: z.number().int().min(0).max(4), rounding: z.enum(['nearest','down','up']) });
+  const creditSetSchema = z.object({ userId: z.string().min(1), score: z.number().min(0).max(1000), reason: z.string().min(4).max(500) });
+  app.get('/api/credit-score', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const entry = creditScores.get(userId);
+    res.json({ score: entry ? entry.score : 0, lastUpdated: entry ? entry.lastUpdated : 0, config: creditScoreConfig });
+  });
+  app.get('/api/credit-score/stream', requireAuthToken, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    try { (res as any).flushHeaders?.(); } catch {}
+    try { res.write(':ok\n\n'); } catch {}
+    if (!creditClients.has(userId)) creditClients.set(userId, new Set());
+    creditClients.get(userId)!.add(res);
+    const initial = creditScores.get(userId) || { score: 0, lastUpdated: 0 };
+    try { res.write(`data: ${JSON.stringify({ type: 'snapshot', data: initial, config: creditScoreConfig })}\n\n`); } catch {}
+    req.on('close', () => {
+      const set = creditClients.get(userId);
+      if (set) {
+        set.delete(res);
+        if (set.size === 0) creditClients.delete(userId);
+      }
+      try { res.end(); } catch {}
+    });
+  });
+  app.post('/api/admin/credit-score/config', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const parsed = creditConfigSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid configuration' });
+    creditScoreConfig.decimals = parsed.data.decimals;
+    creditScoreConfig.rounding = parsed.data.rounding;
+    creditClients.forEach((set) => set.forEach((r: any) => { try { r.write(`data: ${JSON.stringify({ type: 'config', config: creditScoreConfig })}\n\n`); } catch {} }));
+    res.json({ ok: true, config: creditScoreConfig });
+  });
+  app.post('/api/admin/credit-score/set', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const adminId = String(((req as any).user).sub || '');
+    const parsed = creditSetSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid request' });
+    const { userId, score, reason } = parsed.data;
+    const now = Date.now();
+    creditScores.set(userId, { score: Math.round(score), lastUpdated: now });
+    adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId, userId, action: 'credit_score_adjustment', details: JSON.stringify({ score, reason }), timestamp: new Date().toISOString() });
+    const set = creditClients.get(userId);
+    if (set) set.forEach((r: any) => { try { r.write(`data: ${JSON.stringify({ type: 'update', data: { score: Math.round(score), lastUpdated: now } })}\n\n`); } catch {} });
+    res.json({ ok: true, score: Math.round(score), lastUpdated: now, config: creditScoreConfig });
   });
 
   app.get('/api/admin/trades/stream', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
