@@ -28,32 +28,12 @@ export default function TradingViewWidget({ symbol = "COMEX:GC1!", theme = "dark
     };
   }, [loaded]);
 
-  if (blocked && !overviewSymbols?.length && !advancedSymbol) {
-    const data = Array.from({ length: 30 }, (_, i) => ({ x: i + 1, y: 100 + Math.round(Math.sin(i / 3) * 8 + Math.random() * 6) }));
-    return (
-      <div className="w-full overflow-hidden rounded-lg border border-border bg-card" style={{ height }}>
-        <ChartContainer
-          config={{ price: { label: 'Price', color: 'hsl(var(--primary))' } }}
-          className="h-full"
-        >
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="x" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-            <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Line type="monotone" dataKey="y" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} />
-          </LineChart>
-        </ChartContainer>
-      </div>
-    );
-  }
-
-  if (overviewSymbols && overviewSymbols.length) {
-    useEffect(() => {
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    while (el.firstChild) el.removeChild(el.firstChild);
+    if (overviewSymbols && overviewSymbols.length) {
       setLoaded(true);
-      const el = containerRef.current;
-      if (!el) return;
-      while (el.firstChild) el.removeChild(el.firstChild);
       const inner = document.createElement('div');
       inner.className = 'tradingview-widget-container__widget';
       el.appendChild(inner);
@@ -118,16 +98,8 @@ export default function TradingViewWidget({ symbol = "COMEX:GC1!", theme = "dark
       return () => {
         while (el.firstChild) el.removeChild(el.firstChild);
       };
-    }, [overviewSymbols, overviewOptions]);
-    return <div ref={containerRef} className="tradingview-widget-container w-full overflow-hidden rounded-lg border border-border bg-card" style={{ height }} />;
-  }
-
-  if (advancedSymbol) {
-    useEffect(() => {
+    } else if (advancedSymbol) {
       setLoaded(true);
-      const el = containerRef.current;
-      if (!el) return;
-      while (el.firstChild) el.removeChild(el.firstChild);
       const inner = document.createElement('div');
       inner.className = 'tradingview-widget-container__widget';
       inner.style.height = 'calc(100% - 32px)';
@@ -176,7 +148,33 @@ export default function TradingViewWidget({ symbol = "COMEX:GC1!", theme = "dark
       return () => {
         while (el.firstChild) el.removeChild(el.firstChild);
       };
-    }, [advancedSymbol, advancedOptions, watchlist, theme]);
+    }
+  }, [overviewSymbols, overviewOptions, advancedSymbol, advancedOptions, watchlist, theme]);
+
+  if (blocked && !overviewSymbols?.length && !advancedSymbol) {
+    const data = Array.from({ length: 30 }, (_, i) => ({ x: i + 1, y: 100 + Math.round(Math.sin(i / 3) * 8 + Math.random() * 6) }));
+    return (
+      <div className="w-full overflow-hidden rounded-lg border border-border bg-card" style={{ height }}>
+        <ChartContainer
+          config={{ price: { label: 'Price', color: 'hsl(var(--primary))' } }}
+          className="h-full"
+        >
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="x" tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+            <YAxis tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+            <ChartTooltip content={<ChartTooltipContent />} />
+            <Line type="monotone" dataKey="y" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} />
+          </LineChart>
+        </ChartContainer>
+      </div>
+    );
+  }
+
+  if (overviewSymbols && overviewSymbols.length) {
+    return <div ref={containerRef} className="tradingview-widget-container w-full overflow-hidden rounded-lg border border-border bg-card" style={{ height }} />;
+  }
+  if (advancedSymbol) {
     return <div ref={containerRef} className="tradingview-widget-container w-full overflow-hidden rounded-lg border border-border bg-card" style={{ height }} />;
   }
 

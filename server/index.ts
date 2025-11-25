@@ -1,13 +1,36 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, getPresence, registerPresenceRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { securityHeaders } from './security'
+import fs from 'fs'
+import path from 'path'
 import { httpRequests, httpDuration } from './metrics'
 
 const app = express();
+
+function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+function serveStatic(app: express.Express) {
+  const distPath = path.resolve(import.meta.dirname, '..', 'client', 'dist')
+  if (!fs.existsSync(distPath)) {
+    throw new Error(`Could not find the build directory: ${distPath}, make sure to build the client first`)
+  }
+  app.use(express.static(distPath))
+  app.use((_req, res) => {
+    res.sendFile(path.resolve(distPath, 'index.html'))
+  })
+}
+app.set('trust proxy', 1);
 
 const apiLogWindows = new Map<string, { start: number; count: number; suppressedNoted: boolean }>();
 
@@ -120,6 +143,7 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
+    const { setupVite } = await import('./vite')
     await setupVite(app, server);
   } else {
     serveStatic(app);

@@ -1,4 +1,5 @@
-import { type User, type InsertUser, users, securityEvents, notifications, type Notification, type InsertNotification } from "@shared/schema";
+import { type User, type InsertUser, users, securityEvents, notifications, type Notification } from "@shared/schema";
+export type DbNotificationInsert = typeof notifications.$inferInsert
 import { randomUUID } from "crypto";
 import { hashPassword, verifyPassword, encrypt } from './crypto';
 import { db, hasDb } from './db';
@@ -40,7 +41,7 @@ export interface IStorage {
   addSecurityEvent(userId: string, event: Omit<SecurityEvent, 'id'>): Promise<void>;
   getSecurityEvents(userId: string, limit?: number): Promise<SecurityEvent[]>;
   getUserByResetToken(token: string): Promise<SecureUser | undefined>;
-  addNotification(notification: InsertNotification): Promise<Notification>;
+  addNotification(notification: DbNotificationInsert): Promise<Notification>;
   getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]>;
   markNotificationRead(id: string): Promise<void>;
 }
@@ -76,6 +77,7 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const hashed = hashPassword(insertUser.password);
     const user: SecureUser = {
+      username: insertUser.username,
       ...insertUser,
       password: hashed,
       id,
@@ -146,14 +148,16 @@ export class MemStorage implements IStorage {
     return events.slice(0, limit);
   }
 
-  async addNotification(notification: InsertNotification): Promise<Notification> {
+  async addNotification(notification: DbNotificationInsert): Promise<Notification> {
     const id = randomUUID();
     const newNotification: Notification = {
-      ...notification,
       id,
+      userId: notification.userId,
+      type: notification.type,
+      title: notification.title ?? null,
+      message: notification.message,
       read: 0,
       createdAt: new Date(),
-      title: notification.title || null
     };
     this.notifications.set(id, newNotification);
     return newNotification;
@@ -256,7 +260,7 @@ export class PgStorage implements IStorage {
     return rows.map((r) => ({ id: r.id, type: r.type as any, timestamp: r.occurredAt as any, ipAddress: r.ipAddress, status: r.status as any, details: r.details ?? undefined }))
   }
 
-  async addNotification(notification: InsertNotification): Promise<Notification> {
+  async addNotification(notification: DbNotificationInsert): Promise<Notification> {
     if (!db) throw new Error('No database');
     const [row] = await db.insert(notifications).values(notification).returning();
     return row;

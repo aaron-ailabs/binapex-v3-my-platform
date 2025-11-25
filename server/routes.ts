@@ -5,8 +5,8 @@ import { storageDb as storage } from "./storage";
 import { createHmac, randomBytes } from "crypto";
 import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPassword } from "./crypto";
 import { z } from 'zod';
-import { registry, tradeExecutionDuration } from './metrics';
-import { db } from './db';
+import { registry, tradeExecutionDuration, loginAttempts } from './metrics';
+import { db, sb, hasSupabase } from './db';
 import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions } from '@shared/schema';
 import * as speakeasy from "speakeasy";
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
@@ -31,22 +31,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.end(await registry.metrics());
   });
 
-  const SECRET = process.env.JWT_SECRET || randomBytes(32).toString('hex');
+  const runtimeSecrets = { current: process.env.JWT_SECRET || randomBytes(32).toString('hex'), previous: process.env.JWT_SECRET_PREV || '' };
   const b64url = (buf: Buffer | string) => Buffer.from(buf as any).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
   const signJWT = (payload: Record<string, any>) => {
     const header = { alg: 'HS256', typ: 'JWT' };
     const h = b64url(JSON.stringify(header));
     const withExp = { ...payload, exp: Math.floor(Date.now()/1000) + 24*60*60 };
     const p = b64url(JSON.stringify(withExp));
-    const sig = createHmac('sha256', SECRET).update(`${h}.${p}`).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    const sig = createHmac('sha256', runtimeSecrets.current).update(`${h}.${p}`).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
     return `${h}.${p}.${sig}`;
   };
   const verifyJWT = (token: string): Record<string, any> | null => {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
     const [h,p,s] = parts;
-    const expSig = createHmac('sha256', SECRET).update(`${h}.${p}`).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
-    if (s !== expSig) return null;
+    const sig1 = createHmac('sha256', runtimeSecrets.current).update(`${h}.${p}`).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    const sig2 = runtimeSecrets.previous ? createHmac('sha256', runtimeSecrets.previous).update(`${h}.${p}`).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_') : '';
+    if (s !== sig1 && s !== sig2) return null;
     try {
       const payload = JSON.parse(Buffer.from(p.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'));
       if (typeof payload.exp === 'number' && Math.floor(Date.now()/1000) > payload.exp) return null;
@@ -87,6 +88,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!u || !roles.includes(u.role)) return res.status(403).json({ message: 'Forbidden' });
     next();
   };
+
+  const csrfTokens = new Map<string, string>();
+  const requireCsrf = (req: Request, res: Response, next: NextFunction) => {
+    const env = (process.env.NODE_ENV || '').toLowerCase();
+    if (env === 'development') return next();
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const expected = csrfTokens.get(ip) || '';
+    const actual = String(req.headers['x-csrf-token'] || '');
+    if (!expected || actual !== expected) return res.status(403).json({ message: 'Invalid CSRF token' });
+    next();
+  };
+  app.get('/api/csrf', enforceTLS, (req: Request, res: Response) => {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const token = generateSecureToken(24);
+    csrfTokens.set(ip, token);
+    res.cookie('XSRF-TOKEN', token, { sameSite: 'strict', secure: true });
+    res.json({ ok: true });
+  });
+  app.post('/api/admin/jwt/rotate', requireAuth, requireRole(['Admin']), (_req: Request, res: Response) => {
+    runtimeSecrets.previous = runtimeSecrets.current;
+    runtimeSecrets.current = randomBytes(32).toString('hex');
+    res.json({ ok: true });
+  });
 
   const loginSchema = z.object({ username: z.string().min(3).max(64), password: z.string().min(8).max(256) });
   
@@ -186,15 +210,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: 'Password reset successfully' });
   });
 
-  app.post('/api/auth/login', async (req: Request, res: Response) => {
+  app.post('/api/auth/login', requireRateLimit('login', 5, 60000), enforceTLS, requireCsrf, async (req: Request, res: Response) => {
     const parsed = loginSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid credentials format' });
     const { username: u, password: p } = parsed.data;
     const user = await storage.getUserByUsername(u);
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) { try { loginAttempts.labels('failed').inc(); } catch {} ; return res.status(401).json({ message: 'Invalid credentials' }); }
     const ok = await verifyPassword(p, user.password);
-    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!ok) { try { loginAttempts.labels('failed').inc(); } catch {} ; return res.status(401).json({ message: 'Invalid credentials' }); }
     const token = signJWT({ sub: user.id, role: user.role, username: user.username });
+    try { loginAttempts.labels('success').inc(); } catch {}
     res.json({ token, role: user.role, userId: user.id });
   });
 
@@ -340,6 +365,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ sessionId: id });
   });
 
+  // Profile Management
+  type Profile = { name?: string; phone?: string; bank_account?: { bank_name: string; account_number: string; account_name?: string }; preferences?: Record<string, any> };
+  const userProfiles = new Map<string, Profile>();
+  const profileUpdateSchema = z.object({
+    name: z.string().min(1).max(120).optional(),
+    phone: z.string().min(5).max(32).optional(),
+    bank_account: z.object({ bank_name: z.string().min(2).max(120), account_number: z.string().min(2).max(64), account_name: z.string().min(2).max(120).optional() }).optional(),
+    preferences: z.record(z.string(), z.any()).optional(),
+  });
+  app.get('/api/profile', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const base = await storage.getUser(userId);
+    const p = userProfiles.get(userId) || {};
+    res.json({ id: userId, email: base?.username, role: base?.role, name: p.name || base?.username, phone: p.phone || '', bank_account: p.bank_account || null, preferences: p.preferences || {} });
+  });
+  app.post('/api/profile', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const parsed = profileUpdateSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid profile data' });
+    const existing = userProfiles.get(userId) || {};
+    const updated = { ...existing, ...parsed.data };
+    userProfiles.set(userId, updated);
+    try { await storage.addSecurityEvent(userId, { type: 'verification', timestamp: new Date(), ipAddress: req.ip || 'unknown', status: 'success', details: 'Profile updated' }); } catch {}
+    res.json({ ok: true });
+  });
+  const avatars = new Map<string, { mime: string; data: Buffer }>();
+  const avatarSchema = z.object({ dataUrl: z.string().min(20).max(2_000_000) });
+  app.post('/api/profile/avatar', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const parsed = avatarSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid avatar data' });
+    const s = parsed.data.dataUrl;
+    const m = /^data:(.+);base64,(.+)$/.exec(s);
+    if (!m) return res.status(400).json({ message: 'Invalid data URL' });
+    const mime = m[1];
+    const b64 = m[2];
+    try {
+      const buf = Buffer.from(b64, 'base64');
+      avatars.set(userId, { mime, data: buf });
+      res.json({ ok: true });
+    } catch { return res.status(400).json({ message: 'Invalid image data' }); }
+  });
+  app.get('/api/profile/avatar/:userId', async (req: Request, res: Response) => {
+    const userId = String(req.params.userId || '');
+    const a = avatars.get(userId);
+    if (!a) return res.status(404).end();
+    res.setHeader('Content-Type', a.mime);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.end(a.data);
+  });
+
   const assets = new Map<string, { name: string; market: string; enabled: boolean }>();
   const seedAssets = () => {
     [
@@ -385,7 +461,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   seedAssets();
 
   app.get('/api/assets', requireAuth, (_req: Request, res: Response) => {
-    res.json(Array.from(assets.entries()).map(([symbol, v]) => ({ symbol, ...v })));
+    const body = Array.from(assets.entries()).map(([symbol, v]) => ({ symbol, ...v }));
+    const json = JSON.stringify(body);
+    const etag = createHmac('sha1', 'assets').update(json).digest('hex');
+    const inm = String(_req.headers['if-none-match'] || '');
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    if (inm === etag) return res.status(304).end();
+    res.json(body);
   });
   const toggleSchema = z.object({ symbol: z.string().min(3).max(64), enabled: z.boolean() });
   app.post('/api/assets/toggle', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
@@ -574,7 +657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateUser(existing.id, { role: u.role as any });
         created.push(existing);
       } else {
-        const nu = await storage.createUser({ username: u.username, password: u.password });
+        const nu = await storage.createUser({ username: u.username, password: u.password } as any);
         const upd = await storage.updateUser(nu.id, { role: u.role as any });
         created.push(upd);
       }
@@ -584,6 +667,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const wallets = new Map<string, { id: string; userId: string; assetName: string; balanceUsd: number }>();
+  const walletLocks = new Map<string, Promise<void>>();
+  function withWalletLock(userId: string, fn: () => void | Promise<void>) {
+    const prev = walletLocks.get(userId) || Promise.resolve();
+    const next = prev.then(() => Promise.resolve(fn())).finally(() => {
+      if (walletLocks.get(userId) === next) walletLocks.delete(userId);
+    });
+    walletLocks.set(userId, next);
+    return next;
+  }
   const trades = new Map<string, { id: string; userId: string; asset: string; symbol: string; amount: number; direction: 'High'|'Low'; duration: string; entryPrice: number; exitPrice?: number; result: 'Win'|'Loss'|'Pending'; status: 'Open'|'Closed'; createdAt: string; settledUsd?: number; payoutPct?: number }>();
   const adminAudits: { id: string; adminId: string; userId: string; action: string; details: string; timestamp: string }[] = [];
 
@@ -593,6 +685,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!w) {
       w = { id: Math.random().toString(36).slice(2,9), userId, assetName: 'USD', balanceUsd: 0 };
       wallets.set(key, w);
+    }
+    if (hasSupabase && sb) {
+      try {
+        const { data: existing, error } = await sb.from('wallets').select('id,user_id,asset_name,balance_usd').eq('user_id', userId).eq('asset_name','USD').limit(1);
+        if (!error && existing && existing[0]) {
+          return { id: existing[0].id, userId: existing[0].user_id, assetName: existing[0].asset_name, balanceUsd: Number(existing[0].balance_usd) } as any;
+        }
+        const { data: createdRows } = await sb.from('wallets').insert([{ user_id: userId, asset_name: 'USD', balance_usd: 0 }]).select();
+        const created = createdRows && createdRows[0] ? createdRows[0] : { id: Math.random().toString(36).slice(2,9), user_id: userId, asset_name: 'USD', balance_usd: 0 };
+        return { id: created.id, userId: created.user_id, assetName: created.asset_name, balanceUsd: Number(created.balance_usd) } as any;
+      } catch {}
     }
     if (db) {
       const existing = await db.select().from(tblWallets).where(eq(tblWallets.userId, userId)).limit(1);
@@ -678,7 +781,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (amt > maxAmt) return res.status(403).json({ message: 'Maximum trade size exceeded' });
       const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
       const id = Math.random().toString(36).slice(2,9);
-      const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
+      const dir: 'High'|'Low' = direction === 'Low' ? 'Low' : 'High';
+      const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: dir, duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as const, status: 'Open' as const, createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
       trades.set(id, t);
       if (db) {
         db.insert(tblTrades).values({
@@ -725,12 +829,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const exit = Number((t.entryPrice * (1 + move)).toFixed(2));
         const wentUp = exit >= t.entryPrice;
         const win = (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
-        const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss' };
+        const res: 'Win'|'Loss' = win ? 'Win' : 'Loss';
+        const updated = { ...t, exitPrice: exit, status: 'Closed' as const, result: res };
         trades.set(id, updated);
         const w = await ensureUsdWallet(userId);
         const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
         const settled = win ? payout : -t.amount;
-        if (db && 'balanceUsdCents' in w) {
+        if (hasSupabase && sb) {
+          try {
+            await withWalletLock(userId, async () => {
+              const { data } = await sb.from('wallets').select('id,balance_usd').eq('id', (w as any).id).limit(1);
+              const curr = data && data[0] ? Number(data[0].balance_usd) : 0;
+              const next = Number((curr + settled).toFixed(2));
+              await sb.from('wallets').update({ balance_usd: next }).eq('id', (w as any).id);
+            });
+            await sb.from('trades').update({ exit_price: exit, status: 'Closed', result: updated.result, settled_usd: settled }).eq('id', id);
+          } catch {}
+        } else if (db && 'balanceUsdCents' in w) {
           try {
             await db.update(tblWallets)
               .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(settled * 100)}` })
@@ -739,7 +854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } catch {}
         } else {
           (w as any).balanceUsd = Number(((w as any).balanceUsd + settled).toFixed(2));
-          wallets.set(`${userId}:USD`, w as any);
+          await withWalletLock(userId, () => { wallets.set(`${userId}:USD`, w as any); });
         trades.set(id, { ...updated, settledUsd: settled });
       }
       try { tradeExecutionDuration.observe(Date.now() - new Date(t.createdAt).getTime()); } catch {}
@@ -774,7 +889,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const settled = win ? payout : -t.amount;
     const delta = Number((settled - prev).toFixed(2));
     const w = await ensureUsdWallet(t.userId);
-    if (db && 'balanceUsdCents' in w) {
+    if (hasSupabase && sb) {
+      try {
+        await withWalletLock(t.userId, async () => {
+          const { data } = await sb.from('wallets').select('id,balance_usd').eq('id', (w as any).id).limit(1);
+          const curr = data && data[0] ? Number(data[0].balance_usd) : 0;
+          const next = Number((curr + delta).toFixed(2));
+          await sb.from('wallets').update({ balance_usd: next }).eq('id', (w as any).id);
+        });
+        await sb.from('trades').update({ exit_price: exit, status: 'Closed', result: win ? 'Win' : 'Loss', settled_usd: settled }).eq('id', String(tradeId));
+      } catch {}
+    } else if (db && 'balanceUsdCents' in w) {
       try {
         await db.update(tblWallets)
           .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(delta * 100)}` })
@@ -785,9 +910,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch {}
     } else {
       (w as any).balanceUsd = Number(((w as any).balanceUsd + delta).toFixed(2));
-      wallets.set(`${t.userId}:USD`, w as any);
+      await withWalletLock(t.userId, () => { wallets.set(`${t.userId}:USD`, w as any); });
     }
-      const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss', settledUsd: settled };
+      const res2: 'Win'|'Loss' = win ? 'Win' : 'Loss';
+      const updated = { ...t, exitPrice: exit, status: 'Closed' as const, result: res2, settledUsd: settled };
     trades.set(String(tradeId), updated);
     const adminId = String(((req as any).user).sub || '');
     adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId, userId: t.userId, action: 'trade_override', details: JSON.stringify({ tradeId, result: updated.result, exitPrice: exit, deltaUsd: delta }), timestamp: new Date().toISOString() });
@@ -805,7 +931,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!parsed.success) return res.status(400).json({ message: 'Invalid request' });
     const { amount: amt, note } = parsed.data;
     const w = await ensureUsdWallet(userId);
-    if (db && 'balanceUsdCents' in w) {
+    if (hasSupabase && sb) {
+      try {
+        await withWalletLock(userId, async () => {
+          const { data } = await sb.from('wallets').select('id,balance_usd').eq('id', (w as any).id).limit(1);
+          const curr = data && data[0] ? Number(data[0].balance_usd) : 0;
+          const next = Number((curr + amt).toFixed(2));
+          await sb.from('wallets').update({ balance_usd: next }).eq('id', (w as any).id);
+        });
+      } catch {}
+    } else if (db && 'balanceUsdCents' in w) {
       try {
         await db.update(tblWallets)
           .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(amt * 100)}` })
@@ -813,10 +948,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch {}
     } else {
       (w as any).balanceUsd = Number(((w as any).balanceUsd + amt).toFixed(2));
-      wallets.set(`${userId}:USD`, w as any);
+      await withWalletLock(userId, () => { wallets.set(`${userId}:USD`, w as any); });
     }
     adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'deposit', details: JSON.stringify({ amount: amt, note }), timestamp: new Date().toISOString() });
-    const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
+    const responseWallet = hasSupabase && sb ? { id: (w as any).id, userId, assetName: 'USD', balanceUsd: undefined as any } : (db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w);
+    if (hasSupabase && sb) {
+      try {
+        const { data } = await sb.from('wallets').select('balance_usd').eq('id', (w as any).id).limit(1);
+        (responseWallet as any).balanceUsd = data && data[0] ? Number(data[0].balance_usd) : 0;
+      } catch { (responseWallet as any).balanceUsd = 0; }
+    }
     res.json({ ok: true, wallet: responseWallet });
   });
 
@@ -925,7 +1066,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const w = await ensureUsdWallet(userId);
     if (status !== 'Rejected') {
-      if (db && 'balanceUsdCents' in w) {
+      if (hasSupabase && sb) {
+        try {
+          const dec = amount;
+          await withWalletLock(userId, async () => {
+            const { data } = await sb.from('wallets').select('id,balance_usd').eq('id', (w as any).id).limit(1);
+            const curr = data && data[0] ? Number(data[0].balance_usd) : 0;
+            if (curr < dec) return res.status(400).json({ message: 'Insufficient balance' });
+            const next = Number((curr - dec).toFixed(2));
+            await sb.from('wallets').update({ balance_usd: next }).eq('id', (w as any).id);
+          });
+        } catch {
+          return res.status(500).json({ message: 'Withdrawal failed' });
+        }
+      } else if (db && 'balanceUsdCents' in w) {
         const dec = Math.round(amt * 100);
         try {
           const updated = await db
@@ -940,12 +1094,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         if ((w as any).balanceUsd < amt) return res.status(400).json({ message: 'Insufficient balance' });
         (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
-        wallets.set(`${userId}:USD`, w as any);
+        await withWalletLock(userId, () => { wallets.set(`${userId}:USD`, w as any); });
       }
     }
 
     // Record Transaction
-    if (db) {
+    if (hasSupabase && sb) {
+       try {
+         await sb.from('transactions').insert([{ user_id: userId, type: 'withdrawal', asset: 'USD', amount_usd: amt, wallet_address: destination || null, status, created_at: new Date().toISOString() }]);
+       } catch {}
+    } else if (db) {
        await db.insert(tblTransactions).values({
          userId,
          type: 'withdrawal',
@@ -978,7 +1136,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       timestamp: new Date().toISOString()
     });
     
-    const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
+    const responseWallet = hasSupabase && sb ? { id: (w as any).id, userId, assetName: 'USD', balanceUsd: undefined as any } : (db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w);
+    if (hasSupabase && sb) {
+      try {
+        const { data } = await sb.from('wallets').select('balance_usd').eq('id', (w as any).id).limit(1);
+        (responseWallet as any).balanceUsd = data && data[0] ? Number(data[0].balance_usd) : 0;
+      } catch { (responseWallet as any).balanceUsd = 0; }
+    }
     const msg = status === 'On Hold'
       ? 'Withdrawal placed on 24h security hold (new address).'
       : status === 'Manual Review'
@@ -1072,6 +1236,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ clients: clients.size, tracked: tracked.size, subscribers: subs });
   });
 
+  // Credit Score Management & Sync
+  const creditScores = new Map<string, { score: number; lastUpdated: number }>();
+  const creditScoreConfig = { decimals: 0, rounding: 'nearest' as 'nearest' | 'down' | 'up' };
+  const creditClients = new Map<string, Set<any>>();
+  const creditConfigSchema = z.object({ decimals: z.number().int().min(0).max(4), rounding: z.enum(['nearest','down','up']) });
+  const creditSetSchema = z.object({ userId: z.string().min(1), score: z.number().min(0).max(1000), reason: z.string().min(4).max(500) });
+  app.get('/api/credit-score', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const entry = creditScores.get(userId);
+    res.json({ score: entry ? entry.score : 0, lastUpdated: entry ? entry.lastUpdated : 0, config: creditScoreConfig });
+  });
+  app.get('/api/credit-score/stream', requireAuthToken, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    try { (res as any).flushHeaders?.(); } catch {}
+    try { res.write(':ok\n\n'); } catch {}
+    if (!creditClients.has(userId)) creditClients.set(userId, new Set());
+    creditClients.get(userId)!.add(res);
+    const initial = creditScores.get(userId) || { score: 0, lastUpdated: 0 };
+    try { res.write(`data: ${JSON.stringify({ type: 'snapshot', data: initial, config: creditScoreConfig })}\n\n`); } catch {}
+    req.on('close', () => {
+      const set = creditClients.get(userId);
+      if (set) {
+        set.delete(res);
+        if (set.size === 0) creditClients.delete(userId);
+      }
+      try { res.end(); } catch {}
+    });
+  });
+  app.post('/api/admin/credit-score/config', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const parsed = creditConfigSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid configuration' });
+    creditScoreConfig.decimals = parsed.data.decimals;
+    creditScoreConfig.rounding = parsed.data.rounding;
+    creditClients.forEach((set) => set.forEach((r: any) => { try { r.write(`data: ${JSON.stringify({ type: 'config', config: creditScoreConfig })}\n\n`); } catch {} }));
+    res.json({ ok: true, config: creditScoreConfig });
+  });
+  app.post('/api/admin/credit-score/set', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const adminId = String(((req as any).user).sub || '');
+    const parsed = creditSetSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid request' });
+    const { userId, score, reason } = parsed.data;
+    const now = Date.now();
+    creditScores.set(userId, { score: Math.round(score), lastUpdated: now });
+    adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId, userId, action: 'credit_score_adjustment', details: JSON.stringify({ score, reason }), timestamp: new Date().toISOString() });
+    const set = creditClients.get(userId);
+    if (set) set.forEach((r: any) => { try { r.write(`data: ${JSON.stringify({ type: 'update', data: { score: Math.round(score), lastUpdated: now } })}\n\n`); } catch {} });
+    res.json({ ok: true, score: Math.round(score), lastUpdated: now, config: creditScoreConfig });
+  });
+
   app.get('/api/admin/trades/stream', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -1142,7 +1358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } else {
       (w as any).balanceUsd = Number(((w as any).balanceUsd + (appliedCents/100)).toFixed(2));
-      wallets.set(`${targetUser.id}:USD`, w as any);
+      await withWalletLock(targetUser.id, () => { wallets.set(`${targetUser.id}:USD`, w as any); });
     }
 
     if (db) {
@@ -1176,15 +1392,237 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const priceAlertSchema = z.object({ symbol: z.string().min(3).max(64), target: z.number().positive(), direction: z.enum(['above','below']) });
-  app.post('/api/alerts/price', requireAuth, (req: Request, res: Response) => {
-    const userId = String(((req as any).user).sub || '');
+  app.post('/api/alerts/price', requireAuth, requireRateLimit('alerts', 20, 600000), requireCsrf, (req: Request, res: Response) => {
     const parsed = priceAlertSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid price alert' });
     const { symbol, target, direction } = parsed.data;
+    const userId = String(((req as any).user).sub || '');
     const list = priceAlerts.get(symbol) || [];
     list.push({ userId, target: Number(target), direction });
     priceAlerts.set(symbol, list);
     res.json({ ok: true });
+  });
+
+  // Pre-deployment Audit Orchestrator
+  type AuditSeverity = 'critical'|'warning'|'info';
+  type AuditFinding = { id: string; category: string; severity: AuditSeverity; message: string; details?: Record<string, any>; route?: string; timestamp: number };
+  type AuditRunStatus = 'pending'|'running'|'passed'|'failed';
+  type AuditRun = {
+    id: string;
+    env: string;
+    startedAt: number;
+    finishedAt?: number;
+    status: AuditRunStatus;
+    findings: AuditFinding[];
+    gate: { blockingFailures: number; warnings: number; infos: number };
+    override?: { by: string; reason: string; timestamp: number };
+  };
+  const auditRuns = new Map<string, AuditRun>();
+
+  function addFinding(run: AuditRun, f: AuditFinding) {
+    run.findings.push(f);
+    if (f.severity === 'critical') run.gate.blockingFailures += 1;
+    else if (f.severity === 'warning') run.gate.warnings += 1;
+    else run.gate.infos += 1;
+  }
+
+  function escapePdfText(s: string) {
+    return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
+
+  function generateSimplePdf(lines: string[]): Buffer {
+    const header = '%PDF-1.4\n';
+    const objs: string[] = [];
+    // 1: Catalog
+    objs.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+    // 2: Pages
+    objs.push('2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n');
+    // 3: Page
+    objs.push('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n');
+    // 4: Contents (stream)
+    const contentOps: string[] = [];
+    contentOps.push('BT\n/F1 12 Tf\n72 750 Td\n');
+    for (let i = 0; i < lines.length; i++) {
+      const t = escapePdfText(lines[i]);
+      contentOps.push(`(${t}) Tj\n0 -16 Td\n`);
+    }
+    contentOps.push('ET\n');
+    const stream = contentOps.join('');
+    const contentObj = `4 0 obj\n<< /Length ${Buffer.byteLength(stream, 'utf8')} >>\nstream\n${stream}endstream\nendobj\n`;
+    objs.push(contentObj);
+    // 5: Font
+    objs.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n');
+    // Build xref
+    let offset = header.length;
+    const offsets: number[] = [0]; // xref table starts with free object
+    const body = objs.reduce((acc, obj) => {
+      offsets.push(offset);
+      offset += obj.length;
+      return acc + obj;
+    }, '');
+    const xrefStart = offset;
+    const xrefCount = objs.length + 1;
+    let xref = `xref\n0 ${xrefCount}\n`;
+    xref += '0000000000 65535 f \n';
+    for (let i = 1; i < xrefCount; i++) {
+      const off = offsets[i];
+      xref += `${off.toString().padStart(10, '0')} 00000 n \n`;
+    }
+    const trailer = `trailer\n<< /Size ${xrefCount} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+    const pdf = header + body + xref + trailer;
+    return Buffer.from(pdf, 'utf8');
+  }
+
+  app.post('/api/audit/run', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const envName = String((req.body?.env || process.env.NODE_ENV || 'development'));
+    const id = Math.random().toString(36).slice(2, 10);
+    const run: AuditRun = { id, env: envName, startedAt: Date.now(), status: 'pending', findings: [], gate: { blockingFailures: 0, warnings: 0, infos: 0 } };
+    auditRuns.set(id, run);
+
+    const host = req.get('host') || `localhost:${process.env.PORT || '5000'}`;
+    const baseUrl = `${req.protocol}://${host}`;
+    const adminToken = signJWT({ sub: String(((req as any).user).sub), role: 'Admin', username: String(((req as any).user).username || 'admin') });
+
+    const exec = async () => {
+      run.status = 'running';
+      // Backend: health
+      try {
+        const t0 = Date.now();
+        const r = await fetch(`${baseUrl}/api/health`);
+        const ms = Date.now() - t0;
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.status !== 'ok') addFinding(run, { id: 'health', category: 'backend', severity: 'critical', message: 'Health check failed', route: '/api/health', details: { status: r.status, body: j }, timestamp: Date.now() });
+        else addFinding(run, { id: 'health', category: 'backend', severity: ms > 500 ? 'warning' : 'info', message: 'Health check ok', route: '/api/health', details: { ms }, timestamp: Date.now() });
+      } catch (e: any) {
+        addFinding(run, { id: 'health', category: 'backend', severity: 'critical', message: 'Health check exception', route: '/api/health', details: { error: String(e) }, timestamp: Date.now() });
+      }
+
+      // Metrics endpoint
+      try {
+        const t0 = Date.now();
+        const r = await fetch(`${baseUrl}/api/metrics`);
+        const ms = Date.now() - t0;
+        if (!r.ok) addFinding(run, { id: 'metrics', category: 'monitoring', severity: 'warning', message: 'Metrics endpoint not ok', route: '/api/metrics', details: { status: r.status }, timestamp: Date.now() });
+        else addFinding(run, { id: 'metrics', category: 'monitoring', severity: ms > 800 ? 'warning' : 'info', message: 'Metrics endpoint ok', route: '/api/metrics', details: { ms }, timestamp: Date.now() });
+      } catch (e: any) {
+        addFinding(run, { id: 'metrics', category: 'monitoring', severity: 'warning', message: 'Metrics exception', route: '/api/metrics', details: { error: String(e) }, timestamp: Date.now() });
+      }
+
+      // Auth-protected API sample
+      try {
+        const t0 = Date.now();
+        const r = await fetch(`${baseUrl}/api/assets`, { headers: { Authorization: `Bearer ${adminToken}` } });
+        const ms = Date.now() - t0;
+        if (!r.ok) addFinding(run, { id: 'assets', category: 'backend', severity: 'critical', message: 'Assets endpoint failed', route: '/api/assets', details: { status: r.status }, timestamp: Date.now() });
+        else {
+          const j = await r.json().catch(() => []);
+          const commodities = j.filter((x: any) => x.market === 'Commodities');
+          if (commodities.length < 4) addFinding(run, { id: 'assets-seed', category: 'data', severity: 'warning', message: 'Commodity assets incomplete', route: '/api/assets', details: { commodities: commodities.map((c: any) => c.symbol) }, timestamp: Date.now() });
+          else addFinding(run, { id: 'assets', category: 'backend', severity: ms > 600 ? 'warning' : 'info', message: 'Assets endpoint ok', route: '/api/assets', details: { count: j.length, ms }, timestamp: Date.now() });
+        }
+      } catch (e: any) {
+        addFinding(run, { id: 'assets', category: 'backend', severity: 'critical', message: 'Assets exception', route: '/api/assets', details: { error: String(e) }, timestamp: Date.now() });
+      }
+
+      // Credit score fetch
+      try {
+        const t0 = Date.now();
+        const r = await fetch(`${baseUrl}/api/credit-score`, { headers: { Authorization: `Bearer ${adminToken}` } });
+        const ms = Date.now() - t0;
+        if (!r.ok) addFinding(run, { id: 'credit', category: 'backend', severity: 'warning', message: 'Credit score endpoint not ok', route: '/api/credit-score', details: { status: r.status }, timestamp: Date.now() });
+        else addFinding(run, { id: 'credit', category: 'backend', severity: ms > 600 ? 'warning' : 'info', message: 'Credit score endpoint ok', route: '/api/credit-score', details: { ms }, timestamp: Date.now() });
+      } catch (e: any) {
+        addFinding(run, { id: 'credit', category: 'backend', severity: 'warning', message: 'Credit score exception', route: '/api/credit-score', details: { error: String(e) }, timestamp: Date.now() });
+      }
+
+      // Security headers check via health
+      try {
+        const r = await fetch(`${baseUrl}/api/health`);
+        const xcto = r.headers.get('x-content-type-options');
+        const csp = r.headers.get('content-security-policy');
+        if (!xcto) addFinding(run, { id: 'sec-xcto', category: 'security', severity: 'warning', message: 'Missing X-Content-Type-Options', route: '/api/health', timestamp: Date.now() });
+        else addFinding(run, { id: 'sec-xcto', category: 'security', severity: 'info', message: 'X-Content-Type-Options present', route: '/api/health', details: { value: xcto }, timestamp: Date.now() });
+        if (!csp) addFinding(run, { id: 'sec-csp', category: 'security', severity: 'info', message: 'Content-Security-Policy not set (dev)', route: '/api/health', timestamp: Date.now() });
+      } catch {}
+
+      // DB connectivity
+      try {
+        if (db) {
+          const t0 = Date.now();
+          await db.select().from(tblWallets).limit(1);
+          const ms = Date.now() - t0;
+          addFinding(run, { id: 'db', category: 'data', severity: ms > 1000 ? 'warning' : 'info', message: 'DB connectivity ok', timestamp: Date.now() });
+        } else {
+          addFinding(run, { id: 'db', category: 'data', severity: 'info', message: 'DB not configured (in-memory mode)', timestamp: Date.now() });
+        }
+      } catch (e: any) {
+        addFinding(run, { id: 'db', category: 'data', severity: 'critical', message: 'DB connectivity failed', details: { error: String(e) }, timestamp: Date.now() });
+      }
+
+      run.finishedAt = Date.now();
+      run.status = run.gate.blockingFailures > 0 ? 'failed' : 'passed';
+
+      try {
+        const adminUser = await storage.getUserByUsername('admin');
+        if (adminUser) {
+          const summary = `Audit ${run.id} ${run.status.toUpperCase()} — critical: ${run.gate.blockingFailures}, warnings: ${run.gate.warnings}`;
+          await notificationService.send({ userId: adminUser.id, type: 'EMAIL', recipient: adminUser.username, subject: 'Pre-deployment Audit Result', message: summary });
+        }
+      } catch {}
+    };
+
+    // Fire and forget
+    exec();
+    res.json({ id, status: 'queued' });
+  });
+
+  app.get('/api/audit/status/:id', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
+    const id = String(req.params.id || '');
+    const run = auditRuns.get(id);
+    if (!run) return res.status(404).json({ message: 'Not found' });
+    res.json(run);
+  });
+
+  app.post('/api/audit/override', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
+    const { id, reason } = req.body || {};
+    const run = auditRuns.get(String(id || ''));
+    if (!run) return res.status(404).json({ message: 'Not found' });
+    run.override = { by: String(((req as any).user).sub || 'admin'), reason: String(reason || 'override'), timestamp: Date.now() };
+    run.status = 'passed';
+    res.json({ ok: true, run });
+  });
+
+  app.get('/api/audit/report/:id.pdf', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
+    const id = String(req.params.id || '');
+    const run = auditRuns.get(id);
+    if (!run) return res.status(404).json({ message: 'Not found' });
+    const lines: string[] = [];
+    lines.push(`Binapex Audit Report #${run.id}`);
+    lines.push(`Environment: ${run.env}`);
+    lines.push(`Status: ${run.status.toUpperCase()}`);
+    lines.push(`Started: ${new Date(run.startedAt).toISOString()}`);
+    lines.push(`Finished: ${run.finishedAt ? new Date(run.finishedAt).toISOString() : 'N/A'}`);
+    lines.push(`Blocking Failures: ${run.gate.blockingFailures}`);
+    lines.push(`Warnings: ${run.gate.warnings}`);
+    lines.push(`Infos: ${run.gate.infos}`);
+    lines.push('');
+    for (const f of run.findings) {
+      lines.push(`[${f.category}] (${f.severity}) ${f.message}`);
+      if (f.route) lines.push(`Route: ${f.route}`);
+      if (f.details) {
+        const detailStr = JSON.stringify(f.details).slice(0, 240);
+        lines.push(`Details: ${detailStr}`);
+      }
+      lines.push(`At: ${new Date(f.timestamp).toISOString()}`);
+      lines.push('');
+    }
+    if (run.override) {
+      lines.push(`Override: ${run.override.by} — ${run.override.reason} @ ${new Date(run.override.timestamp).toISOString()}`);
+    }
+    const pdf = generateSimplePdf(lines);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="audit-${run.id}.pdf"`);
+    res.end(pdf);
   });
 
   const httpServer = createServer(app);

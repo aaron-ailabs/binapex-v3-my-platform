@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import Redis from 'ioredis'
+import { rateLimitHits } from './metrics'
 
 const url = process.env.REDIS_URL || ''
 const redis = url ? new Redis(url) : null
@@ -20,6 +21,7 @@ export function requireRateLimit(key: string, max: number, windowMs: number) {
         if (ttl < 0) await redis.pexpire(rateKey, windowMs)
         if (c > max) {
           const retry = Math.ceil((await redis.pttl(rateKey)) / 1000)
+          rateLimitHits.labels(key).inc()
           return res.status(429).json({ message: 'Too many attempts. Please try again later.', retryAfter: retry })
         }
         return next()
@@ -32,6 +34,7 @@ export function requireRateLimit(key: string, max: number, windowMs: number) {
     const r = memory.get(rateKey)!
     r.count++
     if (r.count > max) {
+      rateLimitHits.labels(key).inc()
       return res.status(429).json({ message: 'Too many attempts. Please try again later.', retryAfter: Math.ceil((r.reset - now)/1000) })
     }
     next()

@@ -43,7 +43,7 @@ export default function Withdrawals() {
   const [ewalletProvider, setEwalletProvider] = useState('Touch n Go');
   const [ewalletAccount, setEwalletAccount] = useState('');
 
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
 
   useEffect(() => {
     if (user) {

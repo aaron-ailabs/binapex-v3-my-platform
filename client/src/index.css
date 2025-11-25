@@ -57,9 +57,8 @@
 }
 
 :root {
-  /* Default Dark Theme "Binapex" - Black & Gold Executive */
-  --background: 230 25% 5%; /* Rich near-black */
-  --foreground: 42 33% 92%; /* Warm off-white */
+  --background: 230 25% 5%;
+  --foreground: 42 33% 92%;
 
   --card: 229 21% 10%;
   --card-foreground: 42 33% 92%;
@@ -67,7 +66,7 @@
   --popover: 229 21% 8%;
   --popover-foreground: 42 33% 92%;
 
-  --primary: 44 77% 56%; /* Luxe gold */
+  --primary: 44 77% 56%;
   --primary-foreground: 229 45% 10%;
 
   --secondary: 220 15% 13%;
@@ -76,13 +75,13 @@
   --muted: 220 15% 18%;
   --muted-foreground: 42 15% 70%;
 
-  --accent: 39 66% 53%; /* Soft amber for accents */
+  --accent: 39 66% 53%;
   --accent-foreground: 229 45% 10%;
 
   --destructive: 359 82% 60%;
   --destructive-foreground: 33 26% 96%;
 
-  --border: 220 16% 25%; 
+  --border: 220 16% 25%;
   --input: 220 16% 20%;
   --ring: 44 77% 56%;
 
@@ -147,6 +146,8 @@
     @apply font-heading;
   }
 }
+
+/* reverted gold-specific utility classes */
 
 @keyframes float1 { 0% { transform: translate3d(0,0,0) } 50% { transform: translate3d(24px,-32px,0) } 100% { transform: translate3d(0,0,0) } }
 @keyframes float2 { 0% { transform: translate3d(0,0,0) } 50% { transform: translate3d(-28px,20px,0) } 100% { transform: translate3d(0,0,0) } }

@@ -55,7 +55,7 @@ export default function AuthPage() {
     e.preventDefault();
     setIsSubmittingForgot(true);
     try {
-      await apiRequest('POST', '/api/auth/forgot-password', { email: forgotEmail });
+      await apiRequest('POST', ((import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api') + '/auth/forgot-password', { email: forgotEmail });
       setForgotSuccess(true);
       toast({
         title: "Request Sent",

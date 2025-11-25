@@ -48,14 +48,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const uname = email.includes('@') ? email.split('@')[0] : email;
-        const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
         fetch(`${apiBase}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: uname, password: password || found.password || 'password' })
         }).then(async (r) => {
-          if (r.ok) {
-            const data = await r.json();
+          if (!r.ok) return;
+          let data: any = null;
+          try { data = await r.json(); } catch {}
+          if (data?.token) {
             setToken(data.token);
             localStorage.setItem('binapex_token', data.token);
           }

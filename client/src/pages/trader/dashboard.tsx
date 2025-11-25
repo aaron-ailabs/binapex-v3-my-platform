@@ -6,18 +6,58 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Wallet as WalletIcon, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { toUSD, fmtUSD } from '@/lib/utils';
 import { useEffect, useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function TraderDashboard() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
+  const [creditScore, setCreditScore] = useState<number>(user?.credit_score || 0);
+  const [creditConfig, setCreditConfig] = useState<{ decimals: number; rounding: 'nearest'|'down'|'up' }>({ decimals: 0, rounding: 'nearest' });
+  const [creditUpdatedAt, setCreditUpdatedAt] = useState<number>(Date.now());
+  const [syncStatus, setSyncStatus] = useState<'ok'|'updating'|'mismatch'|'error'>('ok');
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const { toast } = useToast();
 
   useEffect(() => {
     if (user) {
       setWallets(db.getUserWallets(user.id));
       setTrades(db.getUserTrades(user.id));
       setBonuses(db.getUserBonuses(user.id));
+      (async () => {
+        try {
+          const r = await fetch(`${apiBase}/credit-score`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+          if (r.ok) {
+            const data = await r.json();
+            setCreditScore(Number(data.score || 0));
+            setCreditUpdatedAt(Number(data.lastUpdated || Date.now()));
+            if (data.config) setCreditConfig({ decimals: data.config.decimals, rounding: data.config.rounding });
+            setSyncStatus('ok');
+          } else {
+            setSyncStatus('error');
+          }
+        } catch { setSyncStatus('error'); }
+        try {
+          const es = new EventSource(`${apiBase}/credit-score/stream?token=${encodeURIComponent(token || '')}`);
+          es.onmessage = (ev) => {
+            try {
+              const payload = JSON.parse(ev.data);
+              if (payload?.type === 'update' || payload?.type === 'snapshot') {
+                const d = payload.data || payload;
+                setSyncStatus('updating');
+                setCreditScore(Number(d.score || 0));
+                setCreditUpdatedAt(Number(d.lastUpdated || Date.now()));
+                setSyncStatus('ok');
+              }
+              if (payload?.config) {
+                setCreditConfig({ decimals: payload.config.decimals, rounding: payload.config.rounding });
+              }
+            } catch {}
+          };
+          es.onerror = () => { setSyncStatus('error'); };
+        } catch {}
+      })();
     }
   }, [user]);
 
@@ -81,6 +121,38 @@ export default function TraderDashboard() {
           <CardContent>
             <div className="text-2xl font-bold text-yellow-500">{user?.membership_tier}</div>
             <p className="text-xs text-muted-foreground">Benefits active</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Credit Score</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const format = (v: number) => {
+                const dec = creditConfig.decimals || 0;
+                const factor = Math.pow(10, dec);
+                const roundMode = creditConfig.rounding || 'nearest';
+                let n = v;
+                if (roundMode === 'nearest') n = Math.round(v * factor) / factor;
+                else if (roundMode === 'down') n = Math.floor(v * factor) / factor;
+                else n = Math.ceil(v * factor) / factor;
+                return n.toFixed(dec);
+              };
+              const valNum = Number(format(creditScore));
+              const color = valNum >= 700 ? 'text-emerald-500' : valNum >= 600 ? 'text-yellow-500' : 'text-red-500';
+              const desc = valNum >= 700 ? 'Excellent' : valNum >= 600 ? 'Fair' : 'Needs Improvement';
+              return (
+                <div className="space-y-1">
+                  <div className={`text-3xl font-extrabold tracking-tight ${color}`}>{format(creditScore)}</div>
+                  <div className="text-xs text-muted-foreground">{desc}</div>
+                  <div className="text-[10px] text-muted-foreground">Updated {creditUpdatedAt ? new Date(creditUpdatedAt).toLocaleString() : '-'}</div>
+                  <div className="text-[10px]">
+                    {syncStatus === 'updating' ? <span className="text-primary">Updating…</span> : syncStatus === 'mismatch' ? <span className="text-yellow-500">Discrepancy detected</span> : syncStatus === 'error' ? <span className="text-red-500">Sync error</span> : <span className="text-muted-foreground">Live</span>}
+                  </div>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>

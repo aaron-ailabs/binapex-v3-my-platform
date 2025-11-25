@@ -77,7 +77,7 @@ export default function LiveTrading() {
   const [spreadBps, setSpreadBps] = useState<number>(db.getEngineSettings().spreadBps);
   const [payoutPct, setPayoutPct] = useState<number>(85);
   const [price, setPrice] = useState<number | null>(null);
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
   const esRef = useRef<EventSource | null>(null);
   const retryRef = useRef<number>(1000);
   const timerRef = useRef<any>(null);

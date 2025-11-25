@@ -117,7 +117,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       try {
         const token = localStorage.getItem('token') || '';
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-        const res = await fetch('/api/notifications?unread=1', { credentials: 'include', headers });
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+        const res = await fetch(`${apiBase}/notifications?unread=1`, { credentials: 'include', headers });
         if (res.ok) {
           const list = await res.json();
           if (mounted) setUnreadCount(Array.isArray(list) ? list.length : 0);
@@ -125,7 +126,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       } catch {}
       try {
         const token = localStorage.getItem('token') || '';
-        const url = token ? `/api/notifications/stream?token=${encodeURIComponent(token)}` : '/api/notifications/stream';
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+        const url = token ? `${apiBase}/notifications/stream?token=${encodeURIComponent(token)}` : `${apiBase}/notifications/stream`;
         es = new EventSource(url, { withCredentials: true } as any);
         es.onmessage = (e) => {
           try {
@@ -144,7 +146,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   // Format breadcrumbs
   const pathSegments = location.split('/').filter(Boolean);
-  const breadcrumbs = pathSegments.map((segment, index) => {
+  const breadcrumbs = pathSegments.map((segment: string, index: number) => {
     const href = `/${pathSegments.slice(0, index + 1).join('/')}`;
     const label = segment.charAt(0).toUpperCase() + segment.slice(1);
     return { href, label };
@@ -339,7 +341,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <BreadcrumbItem>
                     <BreadcrumbLink href="/">Home</BreadcrumbLink>
                   </BreadcrumbItem>
-                  {breadcrumbs.map((crumb, i) => (
+                  {breadcrumbs.map((crumb: { href: string; label: string }, i: number) => (
                     <React.Fragment key={crumb.href}>
                       <BreadcrumbSeparator />
                       <BreadcrumbItem>

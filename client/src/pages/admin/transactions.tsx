@@ -16,7 +16,7 @@ export default function TransactionOversight() {
   const [settings, setSettings] = useState<DepositSettings | null>(null);
   const [engine, setEngine] = useState<EngineSettings | null>(null);
   const settingsRef = useRef<HTMLDivElement | null>(null);
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
 
   useEffect(() => {
     setTransactions(db.getTransactions().filter(t => t.status === 'Pending'));

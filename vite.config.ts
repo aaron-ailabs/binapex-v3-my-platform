@@ -1,52 +1,31 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import path from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tsconfigPaths from "vite-tsconfig-paths";
+import { traeBadgePlugin } from 'vite-plugin-trae-solo-badge';
 
+// https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    tailwindcss(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
-      "react": path.resolve(import.meta.dirname, "node_modules", "react"),
-      "react-dom": path.resolve(import.meta.dirname, "node_modules", "react-dom"),
-    },
-  },
-  css: {
-    postcss: {
-      plugins: [],
-    },
-  },
-  root: path.resolve(import.meta.dirname, "client"),
+  root: 'client',
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
+    sourcemap: 'hidden',
   },
-  server: {
-    host: "0.0.0.0",
-    allowedHosts: true,
-    hmr: { port: 5000, clientPort: 5000 },
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
-    },
-  },
-});
+  plugins: [
+    react({
+      babel: {
+        plugins: [
+          'react-dev-locator',
+        ],
+      },
+    }),
+    traeBadgePlugin({
+      variant: 'dark',
+      position: 'bottom-right',
+      prodOnly: true,
+      clickable: true,
+      clickUrl: 'https://www.trae.ai/solo?showJoin=1',
+      autoTheme: true,
+      autoThemeTarget: '#root'
+    }), 
+    tsconfigPaths()
+  ],
+})
