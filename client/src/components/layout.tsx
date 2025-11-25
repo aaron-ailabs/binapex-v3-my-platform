@@ -62,6 +62,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>(['Finance', 'Management', 'System']);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
 
   // Session Timeout
   useEffect(() => {
@@ -108,6 +109,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         if (throttleTimer) clearTimeout(throttleTimer);
     };
   }, [user, logout, toast]);
+
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let mounted = true;
+    const init = async () => {
+      try {
+        const res = await fetch('/api/notifications?unread=1', { credentials: 'include' });
+        if (res.ok) {
+          const list = await res.json();
+          if (mounted) setUnreadCount(Array.isArray(list) ? list.length : 0);
+        }
+      } catch {}
+      try {
+        es = new EventSource('/api/notifications/stream', { withCredentials: true } as any);
+        es.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data || '{}');
+            if (typeof data.unreadCount === 'number') setUnreadCount(data.unreadCount);
+          } catch {}
+        };
+      } catch {}
+    };
+    init();
+    return () => {
+      mounted = false;
+      try { es?.close(); } catch {}
+    };
+  }, [user]);
 
   // Format breadcrumbs
   const pathSegments = location.split('/').filter(Boolean);
@@ -190,15 +219,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         
         <div className="flex-1 py-6 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {isAdmin ? (
-            // Admin Grouped Navigation
+            // Admin Grouped Navigation with collapsible groups
             adminLinksGrouped.map((group) => (
-              <div key={group.group} className="mb-4">
+              <Collapsible key={group.group} open={openGroups.includes(group.group)} onOpenChange={() => toggleGroup(group.group)}>
                 {group.group !== 'Overview' && (
-                   <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                     {group.group}
-                   </div>
+                   <CollapsibleTrigger className="flex items-center justify-between px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                     <span>{group.group}</span>
+                     <ChevronDown className={cn("w-3 h-3 transition-transform", openGroups.includes(group.group) ? "rotate-180" : "")} />
+                   </CollapsibleTrigger>
                 )}
-                <div className="space-y-1">
+                <CollapsibleContent className="space-y-1">
                   {group.items.map(link => {
                      const Icon = link.icon;
                      const isActive = location === link.href || location.startsWith(link.href + '?');
@@ -220,8 +250,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         </Link>
                      );
                   })}
-                </div>
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
             ))
           ) : (
             // Standard Navigation for Traders/CS
@@ -287,7 +317,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen transition-all duration-300">
         {/* Header */}
-        <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20 px-6 flex items-center justify-between">
+      <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20 px-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button 
               variant="ghost" 
@@ -335,7 +365,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
               <Bell className="w-5 h-5" />
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full animate-pulse" />
+              {unreadCount > 0 ? (
+                <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] leading-5 text-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              ) : null}
             </Button>
             
             <DropdownMenu>
@@ -382,4 +416,4 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
-}
+} 

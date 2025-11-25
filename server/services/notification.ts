@@ -15,16 +15,26 @@ export class NotificationService {
   async send(payload: NotificationPayload): Promise<boolean> {
     // In a real app, we would switch on payload.type and call external APIs.
     // For now, we log to console to simulate sending.
-    
+
     console.log(`[NOTIFICATION SERVICE] Sending ${payload.type} to ${payload.recipient}`);
     if (payload.subject) {
       console.log(`[NOTIFICATION SERVICE] Subject: ${payload.subject}`);
     }
     console.log(`[NOTIFICATION SERVICE] Message: ${payload.message}`);
-    
+
     // Simulate API latency
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
+    try {
+      const { storageDb } = await import('../storage');
+      await storageDb.addNotification({
+        userId: payload.userId,
+        type: payload.type,
+        title: payload.subject,
+        message: payload.message,
+      } as any);
+    } catch {}
+
     return true;
   }
 

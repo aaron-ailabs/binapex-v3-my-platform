@@ -5,7 +5,7 @@ import { storageDb as storage } from "./storage";
 import { createHmac, randomBytes } from "crypto";
 import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPassword } from "./crypto";
 import { z } from 'zod';
-import { registry } from './metrics';
+import { registry, tradeExecutionDuration } from './metrics';
 import { db } from './db';
 import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions } from '@shared/schema';
 import * as speakeasy from "speakeasy";
@@ -13,6 +13,7 @@ import { eq, and, gte, sql as dsql } from 'drizzle-orm';
 import Redis from 'ioredis';
 
 import { notificationService } from "./services/notification";
+import { complianceService } from "./services/compliance";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -51,6 +52,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeof payload.exp === 'number' && Math.floor(Date.now()/1000) > payload.exp) return null;
       return payload;
     } catch { return null; }
+  };
+
+  const { requireRateLimit } = await import('./rate-limit');
+
+  const enforceTLS = (req: Request, res: Response, next: NextFunction) => {
+    const env = (process.env.NODE_ENV || '').toLowerCase();
+    const forwarded = (req.headers['x-forwarded-proto'] as string) || '';
+    const secure = req.secure || forwarded === 'https';
+    const host = (req.headers.host || '').split(':')[0];
+    const local = host === 'localhost' || host === '127.0.0.1';
+    if (env !== 'development' && !secure && !local) return res.status(403).json({ message: 'HTTPS required' });
+    next();
   };
   const requireAuth = (req: Request, res: Response, next: NextFunction) => {
     const auth = req.headers.authorization || '';
@@ -96,7 +109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     await storage.updateUser(user.id, {
       resetPasswordToken: token,
-      resetPasswordExpires: BigInt(expires) as unknown as bigint // Type cast for BigInt if needed by Drizzle
+      resetPasswordExpires: expires as any
     });
 
     const resetLink = `${req.protocol}://${req.get('host')}/auth/reset-password?token=${token}`;
@@ -180,17 +193,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json((req as any).user);
   });
 
-  const { requireRateLimit } = await import('./rate-limit');
-
-  const enforceTLS = (req: Request, res: Response, next: NextFunction) => {
-    const env = (process.env.NODE_ENV || '').toLowerCase();
-    const forwarded = (req.headers['x-forwarded-proto'] as string) || '';
-    const secure = req.secure || forwarded === 'https';
-    const host = (req.headers.host || '').split(':')[0];
-    const local = host === 'localhost' || host === '127.0.0.1';
-    if (env !== 'development' && !secure && !local) return res.status(403).json({ message: 'HTTPS required' });
-    next();
-  };
 
   const verificationCodes = new Map<string, { code: string; expiresAt: number }>();
 
@@ -203,6 +205,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     verificationCodes.set(`${userId}:${ch}`, { code, expiresAt });
     const dev = (process.env.NODE_ENV || '').toLowerCase() === 'development';
     res.json(dev ? { sent: true, devCode: code } : { sent: true });
+  });
+
+  app.get('/api/notifications', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const unreadOnly = String((req.query as any).unread || '') === '1';
+    const list = await storage.getNotifications(userId, unreadOnly);
+    res.json(list);
+  });
+
+  app.patch('/api/notifications/:id/read', requireAuth, async (req: Request, res: Response) => {
+    const id = String(req.params.id || '');
+    if (!id) return res.status(400).json({ message: 'Invalid id' });
+    await storage.markNotificationRead(id);
+    res.json({ ok: true });
+  });
+
+  const notificationClients = new Map<string, Set<any>>();
+  app.get('/api/notifications/stream', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    try { (res as any).flushHeaders?.(); } catch {}
+    try { res.write(':ok\n\n'); } catch {}
+    if (!notificationClients.has(userId)) notificationClients.set(userId, new Set());
+    notificationClients.get(userId)!.add(res);
+    const send = async () => {
+      const unread = await storage.getNotifications(userId, true);
+      const payload = { unreadCount: unread.length, notifications: unread.slice(0, 10) };
+      try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {}
+    };
+    await send();
+    const interval = setInterval(send, 5000);
+    req.on('close', () => {
+      clearInterval(interval);
+      const set = notificationClients.get(userId);
+      if (set) {
+        set.delete(res);
+        if (set.size === 0) notificationClients.delete(userId);
+      }
+      try { res.end(); } catch {}
+    });
   });
 
   app.post('/api/security/withdrawal-password', requireAuth, requireRateLimit('withdrawal-password-set', 3, 3600000), enforceTLS, async (req: Request, res: Response) => {
@@ -562,58 +606,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     if (!reg.enabled) return res.status(403).json({ message: 'Asset disabled' });
     const amt = Number(amount);
-    const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
-    const id = Math.random().toString(36).slice(2,9);
-    const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
-    trades.set(id, t);
-    if (db) {
-      db.insert(tblTrades).values({
-        id,
-        userId,
-        asset: t.asset,
-        symbol: t.symbol,
-        amountUsdCents: Math.round(amt * 100),
-        direction: t.direction,
-        duration: t.duration,
-        entryPrice: Math.round(base * 100),
-        result: t.result,
-        status: t.status,
-        payoutPct: t.payoutPct ?? engine.payoutPct,
-      }).catch(() => {});
-    }
-    const parseMs = (d: string) => {
-      const s = String(d).trim().toUpperCase();
-      if (s.endsWith('M')) return Number(s.slice(0, -1)) * 60_000;
-      if (s.endsWith('H')) return Number(s.slice(0, -1)) * 3_600_000;
-      return 60_000;
-    };
-    const scale = Number(process.env.TRADING_DURATION_SCALE || '1');
-    const ms = Math.max(1000, Math.floor(parseMs(t.duration) * (Number.isFinite(scale) && scale > 0 ? scale : 1)));
-    setTimeout(async () => {
-      const move = (Math.random() * 2 - 1) * (engine.spreadBps / 10000) * 10;
-      const exit = Number((t.entryPrice * (1 + move)).toFixed(2));
-      const wentUp = exit >= t.entryPrice;
-      const win = (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
-      const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss' };
-      trades.set(id, updated);
-      const w = await ensureUsdWallet(userId);
-      const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
-      const settled = win ? payout : -t.amount;
-      if (db && 'balanceUsdCents' in w) {
-        try {
-          await db.update(tblWallets)
-            .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(settled * 100)}` })
-            .where(eq(tblWallets.id, (w as any).id));
-          await db.update(tblTrades).set({ exitPrice: Math.round(exit * 100), status: 'Closed', result: updated.result, settledUsdCents: Math.round(settled * 100) }).where(eq(tblTrades.id, id));
-        } catch {}
-      } else {
-        (w as any).balanceUsd = Number(((w as any).balanceUsd + settled).toFixed(2));
-        wallets.set(`${userId}:USD`, w as any);
-        trades.set(id, { ...updated, settledUsd: settled });
+    const tierLimits: Record<string, number> = { Silver: 1000, Gold: 5000, Platinum: 10000 };
+    const exposureLimits: Record<string, number> = { Crypto: 100000, Forex: 200000, Commodities: 150000, Unknown: 50000 };
+    const maxOpenTrades = 10;
+    const dailyVolumeLimit = 50000;
+    const dailyLossLimit = 5000;
+    const uPromise = storage.getUser(userId);
+    const openForUser = Array.from(trades.values()).filter(t => t.userId === userId && t.status === 'Open');
+    if (openForUser.length >= maxOpenTrades) return res.status(403).json({ message: 'Max open trades reached' });
+    const marketType = reg.market || 'Unknown';
+    const exposureOpen = Array.from(trades.values()).filter(t => t.asset === String(asset) && t.status === 'Open').reduce((a, t) => a + Number(t.amount || 0), 0);
+    if (exposureOpen + amt > (exposureLimits[marketType] || exposureLimits.Unknown)) return res.status(403).json({ message: 'Platform exposure limit reached' });
+    const baseBefore = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
+    const prev = baseBefore;
+    const nextP = Number((baseBefore * (1 + (Math.random() * 0.01 - 0.005))).toFixed(2));
+    const movePct = Math.abs((nextP - prev) / prev) * 100;
+    const volThreshold = 2;
+    if (movePct > volThreshold) return res.status(403).json({ message: 'Volatility protection active' });
+    const nowIso = new Date(Date.now() - 24*60*60*1000).toISOString();
+    const dailyTrades = Array.from(trades.values()).filter(t => t.userId === userId && new Date(t.createdAt).toISOString() >= nowIso);
+    const dailyVol = dailyTrades.reduce((a, t) => a + Number(t.amount || 0), 0) + amt;
+    if (dailyVol > dailyVolumeLimit) return res.status(403).json({ message: 'Daily trade limit exceeded' });
+    const dailyLoss = dailyTrades.filter(t => t.status === 'Closed' && t.result === 'Loss').reduce((a, t) => a + Math.abs(Number(t.settledUsd || 0)), 0);
+    if (dailyLoss >= dailyLossLimit) return res.status(403).json({ message: 'Daily loss limit reached' });
+    return uPromise.then((u) => {
+      const tier = (u?.membershipTier || 'Silver') as string;
+      const maxAmt = tierLimits[tier] || tierLimits.Silver;
+      if (amt > maxAmt) return res.status(403).json({ message: 'Maximum trade size exceeded' });
+      const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
+      const id = Math.random().toString(36).slice(2,9);
+      const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
+      trades.set(id, t);
+      if (db) {
+        db.insert(tblTrades).values({
+          id,
+          userId,
+          asset: t.asset,
+          symbol: t.symbol,
+          amountUsdCents: Math.round(amt * 100),
+          direction: t.direction,
+          duration: t.duration,
+          entryPrice: Math.round(base * 100),
+          result: t.result,
+          status: t.status,
+          payoutPct: t.payoutPct ?? engine.payoutPct,
+        }).catch(() => {});
       }
-      adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'trade_close', details: JSON.stringify({ tradeId: id, result: updated.result, exitPrice: exit, settledUsd: settled }), timestamp: new Date().toISOString() });
-    }, ms);
-    res.json(t);
+      if (adminTradeClients.size) {
+        const payload = { type: 'trade_open', trade: t };
+        adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
+      }
+      const parseMs = (d: string) => {
+        const s = String(d).trim().toUpperCase();
+        if (s.endsWith('M')) return Number(s.slice(0, -1)) * 60_000;
+        if (s.endsWith('H')) return Number(s.slice(0, -1)) * 3_600_000;
+        return 60_000;
+      };
+      const scale = Number(process.env.TRADING_DURATION_SCALE || '1');
+      const ms = Math.max(1000, Math.floor(parseMs(t.duration) * (Number.isFinite(scale) && scale > 0 ? scale : 1)));
+      setTimeout(async () => {
+        const move = (Math.random() * 2 - 1) * (engine.spreadBps / 10000) * 10;
+        const exit = Number((t.entryPrice * (1 + move)).toFixed(2));
+        const wentUp = exit >= t.entryPrice;
+        const win = (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
+        const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss' };
+        trades.set(id, updated);
+        const w = await ensureUsdWallet(userId);
+        const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
+        const settled = win ? payout : -t.amount;
+        if (db && 'balanceUsdCents' in w) {
+          try {
+            await db.update(tblWallets)
+              .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(settled * 100)}` })
+              .where(eq(tblWallets.id, (w as any).id));
+            await db.update(tblTrades).set({ exitPrice: Math.round(exit * 100), status: 'Closed', result: updated.result, settledUsdCents: Math.round(settled * 100) }).where(eq(tblTrades.id, id));
+          } catch {}
+        } else {
+          (w as any).balanceUsd = Number(((w as any).balanceUsd + settled).toFixed(2));
+          wallets.set(`${userId}:USD`, w as any);
+          trades.set(id, { ...updated, settledUsd: settled });
+        }
+        try { tradeExecutionDuration.observe(Date.now() - new Date(t.createdAt).getTime()); } catch {}
+        adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'trade_close', details: JSON.stringify({ tradeId: id, result: updated.result, exitPrice: exit, settledUsd: settled }), timestamp: new Date().toISOString() });
+        if (adminTradeClients.size) {
+          const payload = { type: 'trade_close', trade: { ...updated, settledUsd: settled } };
+          adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
+        }
+      }, ms);
+      res.json(t);
+    });
+    return;
   });
 
   const overrideSchema = z.object({
@@ -734,25 +816,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const amt = Number(amount || 0);
     if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
     
-    const w = await ensureUsdWallet(userId);
-    if (db && 'balanceUsdCents' in w) {
-      const dec = Math.round(amt * 100);
-      try {
-        const updated = await db
-          .update(tblWallets)
-          .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} - ${dec}` })
-          .where(and(eq(tblWallets.id, (w as any).id), gte(tblWallets.balanceUsdCents, dec)))
-          .returning({ id: tblWallets.id });
-        if (!updated[0]) return res.status(400).json({ message: 'Insufficient balance' });
-      } catch {
-        return res.status(500).json({ message: 'Withdrawal failed' });
-      }
-    } else {
-      if ((w as any).balanceUsd < amt) return res.status(400).json({ message: 'Insufficient balance' });
-      (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
-      wallets.set(`${userId}:USD`, w as any);
-    }
-
     // Determine Status & 24h Hold
     let status = 'Pending';
     let detailsStr = note || '';
@@ -763,10 +826,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
        detailsStr += ' (KYC Not Verified)';
     }
 
-    if (amt > 10000) {
+    const comp = await complianceService.checkTransaction(userId, amt, destination);
+    if (!comp.passed) {
+       status = 'Rejected';
+       detailsStr += comp.reason ? ` (${comp.reason})` : ' (Compliance Rejected)';
+       await notificationService.sendSecurityAlert(userId, user.username, comp.reason || 'Compliance rejection');
+    } else if (comp.requiresManualReview) {
        status = 'Manual Review';
-       detailsStr += ' (Large Amount)';
-       await notificationService.sendSecurityAlert(userId, user.username, `Large withdrawal amount: $${amt}`);
+       detailsStr += ' (Compliance Review)';
     }
     
     if (destination && db) {
@@ -783,7 +850,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
          detailsStr += ' (New Address - 24h Hold)';
        }
        
-       // High Frequency Check
+       
        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
        const recentWithdrawals = await db.select().from(tblTransactions).where(
          and(
@@ -792,11 +859,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             gte(tblTransactions.createdAt, oneHourAgo)
          )
        );
-       if (recentWithdrawals.length >= 3) {
+       if (recentWithdrawals.length >= 3 && status === 'Pending') {
           status = 'Security Hold';
           detailsStr += ' (High Frequency)';
           await notificationService.sendSecurityAlert(userId, user.username, 'High frequency withdrawals detected');
        }
+    }
+
+    const w = await ensureUsdWallet(userId);
+    if (status !== 'Rejected') {
+      if (db && 'balanceUsdCents' in w) {
+        const dec = Math.round(amt * 100);
+        try {
+          const updated = await db
+            .update(tblWallets)
+            .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} - ${dec}` })
+            .where(and(eq(tblWallets.id, (w as any).id), gte(tblWallets.balanceUsdCents, dec)))
+            .returning({ id: tblWallets.id });
+          if (!updated[0]) return res.status(400).json({ message: 'Insufficient balance' });
+        } catch {
+          return res.status(500).json({ message: 'Withdrawal failed' });
+        }
+      } else {
+        if ((w as any).balanceUsd < amt) return res.status(400).json({ message: 'Insufficient balance' });
+        (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
+        wallets.set(`${userId}:USD`, w as any);
+      }
     }
 
     // Record Transaction
@@ -834,10 +922,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
-    res.json({ ok: true, wallet: responseWallet, status, message: status === 'On Hold' ? 'Withdrawal placed on 24h security hold (new address).' : 'Withdrawal submitted successfully.' });
+    const msg = status === 'On Hold'
+      ? 'Withdrawal placed on 24h security hold (new address).'
+      : status === 'Manual Review'
+        ? 'Withdrawal submitted and is under compliance review.'
+        : status === 'Compliance Hold'
+          ? 'Withdrawal placed on compliance hold pending KYC.'
+          : status === 'Rejected'
+            ? 'Withdrawal rejected due to compliance checks.'
+            : 'Withdrawal submitted successfully.';
+    res.json({ ok: status !== 'Rejected', wallet: responseWallet, status, message: msg });
   });
 
   const clients = new Set<any>();
+  const adminTradeClients = new Set<any>();
   const tracked = new Set<string>();
   const cache = new Map<string, number>();
   const computeBase = (s: string) => Math.abs(s.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000 + 100;
@@ -882,6 +980,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
   setInterval(tick, 3000);
+
+  app.get('/api/admin/trades/stream', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    try { (res as any).flushHeaders?.(); } catch {}
+    try { res.write(':ok\n\n'); } catch {}
+    adminTradeClients.add(res);
+    const initial = Array.from(trades.values()).slice(-50).map(t => ({ type: 'snapshot', trade: t }));
+    try { res.write(`data: ${JSON.stringify(initial)}\n\n`); } catch {}
+    req.on('close', () => {
+      adminTradeClients.delete(res);
+      try { res.end(); } catch {}
+    });
+  });
 
   const httpServer = createServer(app);
 
