@@ -99,7 +99,20 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // Don't throw here, just log if needed
+    if (process.env.NODE_ENV !== 'test') {
+      console.error(err);
+    }
+  });
+
+  // Prevent server crash on unhandled rejections
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    // Ideally restart, but in dev keep alive to avoid loop
   });
 
   // importantly only setup vite in development and after

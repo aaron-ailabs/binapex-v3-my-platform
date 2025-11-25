@@ -139,13 +139,37 @@ export default function LiveTrading() {
       };
       es.onerror = () => {
         try { es.close(); } catch {}
+        if (document.visibilityState !== 'visible') { timerRef.current = null; return; }
         const next = Math.min(retryRef.current * 2, 15000);
         retryRef.current = next;
         timerRef.current = setTimeout(connect, next);
       };
     };
     connect();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        if (!esRef.current && !timerRef.current) {
+          retryRef.current = 1000;
+          connect();
+        }
+      } else {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
+      }
+    };
+    const onOnline = () => {
+      if (document.visibilityState === 'visible') {
+        if (!esRef.current && !timerRef.current) {
+          retryRef.current = 1000;
+          connect();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('online', onOnline);
     return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('online', onOnline);
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
       if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
     };

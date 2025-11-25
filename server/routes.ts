@@ -1,4 +1,5 @@
-import type { Express, Request, Response, NextFunction } from "express";
+import { Readable } from 'stream';
+import { type Express, type Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storageDb as storage } from "./storage";
 import { createHmac, randomBytes } from "crypto";
@@ -282,9 +283,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Unsupported host' });
       }
       const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
       const onAbort = () => { try { controller.abort(); } catch {} };
       req.on('close', onAbort);
-      const r = await fetch(parsed.toString(), { headers: { 'Accept': 'image/*' }, signal: controller.signal });
+      
+      let r;
+      try {
+        r = await fetch(parsed.toString(), { 
+          headers: { 
+            'Accept': 'image/*',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }, 
+          signal: controller.signal 
+        });
+        clearTimeout(timeout);
+      } catch (err) {
+        clearTimeout(timeout);
+        // Log the error but don't crash, return fallback if it's a network error
+        if (process.env.NODE_ENV !== 'test') console.error('Proxy fetch failed:', err);
+        const fallback = Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWP4//8/AwAI/AL+f3q1JwAAAABJRU5ErkJggg==',
+          'base64'
+        );
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-cache');
+        return res.end(fallback);
+      }
+
       if (!r.ok || !r.body) {
         const fallback = Buffer.from(
           'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWP4//8/AwAI/AL+f3q1JwAAAABJRU5ErkJggg==',
@@ -294,11 +319,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.setHeader('Cache-Control', 'no-cache');
         return res.end(fallback);
       }
-      const ct = r.headers.get('content-type') || 'image/jpeg';
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.startsWith('image/')) {
+        // If upstream returns non-image (e.g. HTML error), return fallback to avoid ORB blocks
+        const fallback = Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWP4//8/AwAI/AL+f3q1JwAAAABJRU5ErkJggg==',
+          'base64'
+        );
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-cache');
+        return res.end(fallback);
+      }
       res.setHeader('Content-Type', ct);
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      const nodeStream = (r.body as any).pipe ? r.body : require('stream').Readable.fromWeb(r.body as any);
+      const nodeStream = ((r.body as any).pipe ? r.body : Readable.fromWeb(r.body as any)) as Readable;
       nodeStream.on('error', () => {
         try { res.destroy(); } catch {}
       });
@@ -546,7 +581,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true, wallet: responseWallet });
   });
 
-  const withdrawalSchema = z.object({ amount: z.number().positive(), note: z.string().max(200).optional(), withdrawalPassword: z.string().min(8).max(256) });
+  const withdrawalSchema = z.object({ amount: z.number().positive(), note: z.string().max(200).optional(), withdrawalPassword: z.string().min(8).max(256), twoFactorCode: z.string().optional() });
   app.post('/api/withdrawals', requireAuth, requireRateLimit('withdrawal', 5, 3600000), enforceTLS, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
     const parsed = withdrawalSchema.safeParse(req.body || {});

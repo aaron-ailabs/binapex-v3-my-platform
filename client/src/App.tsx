@@ -52,7 +52,12 @@ function Router() {
       {/* Public Routes */}
       <Route path="/">
          {/* If user is logged in, redirect to dashboard, otherwise show Landing Page */}
-         {user ? <Redirect to="/dashboard" /> : <LandingPage />}
+         {/* Wait for auth loading to complete before deciding */}
+         {() => {
+           const { user, isLoading } = useAuth();
+           if (isLoading) return null; // Or a loading spinner
+           return user ? <Redirect to="/dashboard" /> : <LandingPage />;
+         }}
       </Route>
       
       <Route path="/auth" component={AuthPage} />
@@ -107,13 +112,17 @@ function Router() {
   );
 }
 
+import { ThemeProvider } from "@/components/theme-provider";
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Router />
-        <Toaster />
-      </AuthProvider>
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <AuthProvider>
+          <Router />
+          <Toaster />
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

@@ -130,30 +130,89 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    const symbols = HERO_TICKER.map((t) => t.symbol).join(',');
-    const es = new EventSource(`${apiBase}/prices/stream?symbols=${encodeURIComponent(symbols)}`);
-    es.onmessage = (e) => {
-      try {
-        const j = JSON.parse(e.data);
-        if (j && j.symbol && typeof j.price === 'number') {
-          pricesRef.current = { ...pricesRef.current, [j.symbol]: j.price };
-          if (rafRef.current == null) {
-            rafRef.current = window.requestAnimationFrame(() => {
-              setVisiblePrices({ ...pricesRef.current });
-              rafRef.current = null;
-            });
+    let es: EventSource | null = null;
+    let timer: number | null = null;
+    let retryDelay = 1000;
+
+    const connect = () => {
+      if (es) { try { es.close(); } catch {} }
+      
+      const symbols = HERO_TICKER.map((t) => t.symbol).join(',');
+      es = new EventSource(`${apiBase}/prices/stream?symbols=${encodeURIComponent(symbols)}`);
+      esRef.current = es;
+
+      es.onopen = () => {
+        retryDelay = 1000;
+        // console.log('EventSource connected');
+      };
+
+      es.onmessage = (e) => {
+        try {
+          const j = JSON.parse(e.data);
+          if (j && j.symbol && typeof j.price === 'number') {
+            pricesRef.current = { ...pricesRef.current, [j.symbol]: j.price };
+            if (rafRef.current == null) {
+              rafRef.current = window.requestAnimationFrame(() => {
+                setVisiblePrices({ ...pricesRef.current });
+                rafRef.current = null;
+              });
+            }
           }
+        } catch {}
+      };
+
+      es.onerror = () => {
+        // console.log('EventSource error');
+        try { es?.close(); } catch {}
+        if (document.visibilityState !== 'visible') {
+          timer = null;
+          return;
         }
-      } catch {}
+        const next = Math.min(retryDelay * 1.5, 30000); // Slower backoff
+        retryDelay = next;
+        timer = window.setTimeout(connect, next);
+      };
     };
-    esRef.current = es;
+
+    if (document.visibilityState === 'visible') {
+      connect();
+    }
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        if (!esRef.current && !timer) {
+          retryDelay = 1000;
+          connect();
+        }
+      } else {
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
+      }
+    };
+
+    const onOnline = () => {
+      if (document.visibilityState === 'visible') {
+        if (!esRef.current && !timer) {
+          retryDelay = 1000;
+          connect();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('online', onOnline);
+
     return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('online', onOnline);
       if (rafRef.current != null) {
         try { window.cancelAnimationFrame(rafRef.current); } catch {}
         rafRef.current = null;
       }
+      if (timer) { clearTimeout(timer); timer = null; }
       if (esRef.current) {
         try { esRef.current.close(); } catch {}
+        esRef.current = null;
       }
     };
   }, [apiBase]);
@@ -304,10 +363,7 @@ export default function LandingPage() {
             <ChevronRight className="w-6 h-6" />
           </button>
         </div>
-        <style>{`
-          @keyframes float1 { 0% { transform: translate3d(0,0,0) } 50% { transform: translate3d(24px,-32px,0) } 100% { transform: translate3d(0,0,0) } }
-          @keyframes float2 { 0% { transform: translate3d(0,0,0) } 50% { transform: translate3d(-28px,20px,0) } 100% { transform: translate3d(0,0,0) } }
-        `}</style>
+        
         <div aria-hidden className="absolute inset-0 z-10 pointer-events-none">
           <span className="absolute block w-72 h-72 rounded-full bg-gradient-to-br from-primary/10 to-amber-300/10 blur-3xl" style={{ top: '12%', left: '6%', animation: 'float1 24s linear infinite' }} />
           <span className="absolute block w-60 h-60 rounded-full bg-gradient-to-br from-primary/10 to-amber-300/10 blur-3xl" style={{ bottom: '8%', right: '10%', animation: 'float2 30s linear infinite' }} />
@@ -602,6 +658,7 @@ export default function LandingPage() {
 }
 
 function Testimonials() {
+  const toProxy = (url: string) => `/api/assets/proxy?url=${encodeURIComponent(url)}`;
   const list = [
     { name: 'Aisha Karim', title: 'Crypto Trader', rating: 5, text: 'The analytics and execution speed helped me scale my strategies.', img: 'https://images.unsplash.com/photo-1554151228-14d9def5cc1b?q=80&w=200&auto=format&fit=crop' },
     { name: 'David Chen', title: 'Commodities Specialist', rating: 5, text: 'Clean UI, reliable platform, and great support from the team.', img: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop' },
@@ -620,7 +677,7 @@ function Testimonials() {
             <div key={t.name} className={cn('bg-white/5 p-8 rounded-3xl border border-white/10 transition-opacity', idx === i ? 'opacity-100' : 'opacity-60') }>
               <div className="flex items-center gap-4 mb-4">
                 <Avatar>
-                  <AvatarImage src={t.img} alt={t.name} loading="lazy" />
+                  <AvatarImage src={toProxy(t.img)} alt={t.name} loading="lazy" />
                   <AvatarFallback>{t.name.split(' ').map((s) => s[0]).join('')}</AvatarFallback>
                 </Avatar>
                 <div>

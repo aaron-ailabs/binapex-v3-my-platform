@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Link, useLocation } from 'wouter';
 import { 
@@ -16,8 +16,17 @@ import {
   Users,
   FileText,
   CreditCard,
-  Search
+  Search,
+  Settings,
+  ChevronRight,
+  ChevronDown,
+  Building2,
+  FileSearch,
+  Activity,
+  Sun,
+  Moon
 } from 'lucide-react';
+import { useTheme } from "next-themes";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
@@ -29,12 +38,42 @@ import {
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Badge } from '@/components/ui/badge';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { cn } from '@/lib/utils';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [location] = useLocation();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<string[]>(['Finance', 'Management', 'System']);
+
+  // Format breadcrumbs
+  const pathSegments = location.split('/').filter(Boolean);
+  const breadcrumbs = pathSegments.map((segment, index) => {
+    const href = `/${pathSegments.slice(0, index + 1).join('/')}`;
+    const label = segment.charAt(0).toUpperCase() + segment.slice(1);
+    return { href, label };
+  });
+
+  const toggleGroup = (group: string) => {
+    setOpenGroups(prev => 
+      prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]
+    );
+  };
 
   if (!user) return <>{children}</>;
 
@@ -48,12 +87,37 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/support', label: 'Support', icon: Headset },
   ];
 
-  const adminLinks = [
-    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/admin/users', label: 'User Management', icon: Users },
-    { href: '/admin/kyc', label: 'KYC Queue', icon: FileText },
-    { href: '/admin/transactions#funding', label: 'Funding Settings', icon: CreditCard },
-    { href: '/admin/transactions', label: 'Transactions', icon: CreditCard },
+  // Admin Links - Grouped
+  const adminLinksGrouped = [
+    {
+      group: 'Overview',
+      items: [
+        { href: '/admin', label: 'Dashboard', icon: LayoutDashboard }
+      ]
+    },
+    {
+      group: 'Finance',
+      items: [
+        { href: '/admin/transactions?type=Deposit', label: 'Deposit Requests', icon: Wallet },
+        { href: '/admin/transactions?type=Withdrawal', label: 'Withdrawal Requests', icon: ArrowRightLeft },
+        { href: '/admin/banks', label: 'Bank Accounts', icon: Building2 }
+      ]
+    },
+    {
+      group: 'Management',
+      items: [
+        { href: '/admin/users', label: 'User Management', icon: Users },
+        { href: '/admin/kyc', label: 'KYC Queue', icon: FileText },
+        { href: '/admin/trading', label: 'Trading Monitor', icon: Activity },
+        { href: '/admin/audit', label: 'Audit Log', icon: FileSearch }
+      ]
+    },
+    {
+      group: 'System',
+      items: [
+        { href: '/admin/settings', label: 'Settings', icon: Settings }
+      ]
+    }
   ];
 
   const csLinks = [
@@ -61,56 +125,102 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/cs/lookup', label: 'User Lookup', icon: Search },
   ];
 
-  const links = user.role === 'Admin' ? adminLinks : 
-                user.role === 'Customer Service' ? csLinks : 
-                traderLinks;
+  const NavContent = () => {
+    const isAdmin = user.role === 'Admin';
+    
+    return (
+      <div className="flex flex-col h-full bg-sidebar">
+        <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
+          <div className="flex items-center gap-2 font-heading font-bold text-xl tracking-tight text-sidebar-primary">
+            <div className="w-8 h-8 rounded bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center">
+              <img src="/logo.svg" alt="Logo" className="w-6 h-6" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.innerText = 'B'; }} />
+            </div>
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-sidebar-primary to-sidebar-foreground">BINAPEX</span>
+            {isAdmin && <Badge variant="secondary" className="ml-2 text-[10px] h-5 px-1.5">ADMIN</Badge>}
+          </div>
+        </div>
+        
+        <div className="flex-1 py-6 px-4 space-y-1 overflow-y-auto custom-scrollbar">
+          {isAdmin ? (
+            // Admin Grouped Navigation
+            adminLinksGrouped.map((group) => (
+              <div key={group.group} className="mb-4">
+                {group.group !== 'Overview' && (
+                   <div className="px-3 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                     {group.group}
+                   </div>
+                )}
+                <div className="space-y-1">
+                  {group.items.map(link => {
+                     const Icon = link.icon;
+                     const isActive = location === link.href || location.startsWith(link.href + '?');
+                     return (
+                        <Link
+                          key={link.href}
+                          href={link.href}
+                          className={cn(
+                            "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 group relative",
+                            isActive
+                              ? "bg-sidebar-primary/10 text-sidebar-primary"
+                              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          )}
+                          onClick={() => setMobileOpen(false)}
+                        >
+                          <Icon className={cn("w-4 h-4 transition-transform group-hover:scale-110", isActive && "text-sidebar-primary")} />
+                          {link.label}
+                          {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-sidebar-primary rounded-r-full" />}
+                        </Link>
+                     );
+                  })}
+                </div>
+              </div>
+            ))
+          ) : (
+            // Standard Navigation for Traders/CS
+            (user.role === 'Customer Service' ? csLinks : traderLinks).map((link) => {
+              const Icon = link.icon;
+              const isActive = location === link.href;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-sidebar-primary/10 text-sidebar-primary"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  )}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Icon className="w-4 h-4" />
+                  {link.label}
+                </Link>
+              );
+            })
+          )}
+        </div>
 
-  const NavContent = () => (
-    <div className="flex flex-col h-full">
-      <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
-        <div className="flex items-center gap-2 font-heading font-bold text-xl tracking-tight text-sidebar-primary">
-          <div className="w-8 h-8 rounded bg-sidebar-primary text-sidebar-primary-foreground flex items-center justify-center">
-            B
-          </div>
-          BINAPEX
-        </div>
-      </div>
-      <div className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
-        {links.map((link) => {
-          const Icon = link.icon;
-          const isActive = location === link.href;
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-sidebar-primary/10 text-sidebar-primary"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-              onClick={() => setMobileOpen(false)}
-            >
-              <Icon className="w-4 h-4" />
-              {link.label}
-            </Link>
-          );
-        })}
-      </div>
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 p-2 rounded-lg bg-sidebar-accent/50">
-          <Avatar className="w-9 h-9 border border-sidebar-border">
-            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} />
-            <AvatarFallback>U</AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate text-sidebar-foreground">{user.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{user.role}</p>
+        <div className="p-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-sidebar-accent/50 hover:bg-sidebar-accent/70 transition-colors cursor-pointer group">
+            <div className="relative">
+              <Avatar className="w-9 h-9 border border-sidebar-border">
+                <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} />
+                <AvatarFallback>U</AvatarFallback>
+              </Avatar>
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-sidebar-accent rounded-full"></span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate text-sidebar-foreground group-hover:text-sidebar-primary transition-colors">{user.name}</p>
+              <div className="flex items-center gap-1.5">
+                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                 <p className="text-[10px] text-muted-foreground truncate">Online • {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -127,9 +237,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </Sheet>
 
       {/* Main Content */}
-      <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
+      <div className="flex-1 md:ml-64 flex flex-col min-h-screen transition-all duration-300">
         {/* Header */}
-        <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-20 px-6 flex items-center justify-between">
+        <header className="h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-20 px-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Button 
               variant="ghost" 
@@ -139,12 +249,42 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             >
               <Menu className="w-5 h-5" />
             </Button>
-            <h1 className="font-heading font-semibold text-lg hidden sm:block">
-              {links.find(l => l.href === location)?.label || 'Portal'}
-            </h1>
+            
+            <div className="hidden md:flex flex-col gap-1">
+               <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink href="/">Home</BreadcrumbLink>
+                  </BreadcrumbItem>
+                  {breadcrumbs.map((crumb, i) => (
+                    <React.Fragment key={crumb.href}>
+                      <BreadcrumbSeparator />
+                      <BreadcrumbItem>
+                        {i === breadcrumbs.length - 1 ? (
+                          <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                        ) : (
+                          <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
+                        )}
+                      </BreadcrumbItem>
+                    </React.Fragment>
+                  ))}
+                </BreadcrumbList>
+              </Breadcrumb>
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+
             <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
               <Bell className="w-5 h-5" />
               <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full animate-pulse" />
@@ -152,7 +292,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full">
+                <Button variant="ghost" size="icon" className="rounded-full ring-2 ring-transparent hover:ring-primary/20 transition-all">
                   <Avatar className="w-8 h-8">
                     <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.name}`} />
                     <AvatarFallback>U</AvatarFallback>
@@ -160,13 +300,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user.name}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                  </div>
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer">
                   <UserIcon className="mr-2 h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer text-destructive" onClick={logout}>
+                <DropdownMenuItem className="cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="cursor-pointer text-destructive focus:text-destructive" onClick={logout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem>
@@ -177,7 +327,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         <main className="flex-1 p-6 overflow-x-hidden">
-          <div className="max-w-7xl mx-auto animate-in fade-in duration-500">
+          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
             {children}
           </div>
         </main>
