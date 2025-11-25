@@ -27,6 +27,7 @@ import {
   Moon
 } from 'lucide-react';
 import { useTheme } from "next-themes";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { 
@@ -57,9 +58,56 @@ import { cn } from '@/lib/utils';
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>(['Finance', 'Management', 'System']);
+
+  // Session Timeout
+  useEffect(() => {
+    if (!user) return;
+    
+    // 15 minutes timeout
+    const TIMEOUT_MS = 15 * 60 * 1000; 
+    const CHECK_INTERVAL = 60 * 1000; // Check every minute
+    
+    let lastActivity = Date.now();
+    
+    const updateActivity = () => {
+      lastActivity = Date.now();
+    };
+
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+    
+    let throttleTimer: NodeJS.Timeout | null = null;
+    const handleActivity = () => {
+        if (!throttleTimer) {
+            updateActivity();
+            throttleTimer = setTimeout(() => {
+                throttleTimer = null;
+            }, 1000); // Throttle updates to once per second
+        }
+    };
+
+    events.forEach(e => window.addEventListener(e, handleActivity));
+    
+    const checkInterval = setInterval(() => {
+        if (Date.now() - lastActivity > TIMEOUT_MS) {
+            toast({
+                title: "Session Expired",
+                description: "You have been logged out due to inactivity.",
+                variant: "destructive"
+            });
+            logout();
+        }
+    }, CHECK_INTERVAL);
+
+    return () => {
+        events.forEach(e => window.removeEventListener(e, handleActivity));
+        clearInterval(checkInterval);
+        if (throttleTimer) clearTimeout(throttleTimer);
+    };
+  }, [user, logout, toast]);
 
   // Format breadcrumbs
   const pathSegments = location.split('/').filter(Boolean);

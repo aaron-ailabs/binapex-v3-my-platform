@@ -20,6 +20,10 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import UserManagement from "@/pages/admin/users";
 import KYCQueue from "@/pages/admin/kyc";
 import TransactionOversight from "@/pages/admin/transactions";
+import AdminBanks from "@/pages/admin/banks";
+import AdminTrading from "@/pages/admin/trading";
+import AdminAudit from "@/pages/admin/audit";
+import AdminSettings from "@/pages/admin/settings";
 
 import CSDashboard from "@/pages/cs/dashboard";
 import UserLookup from "@/pages/cs/user-lookup";
@@ -97,6 +101,18 @@ function Router() {
       </Route>
       <Route path="/admin/transactions">
         <ProtectedRoute component={TransactionOversight} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/banks">
+        <ProtectedRoute component={AdminBanks} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/trading">
+        <ProtectedRoute component={AdminTrading} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/audit">
+        <ProtectedRoute component={AdminAudit} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/settings">
+        <ProtectedRoute component={AdminSettings} allowedRoles={['Admin']} />
       </Route>
 
       {/* CS Routes */}

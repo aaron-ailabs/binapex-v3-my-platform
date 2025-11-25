@@ -13,6 +13,7 @@ import { toUSD, fmtUSD } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle, ArrowRight, Building2, Smartphone, Wallet, FileText } from 'lucide-react';
+import { ReceiptModal } from '@/components/receipt-modal';
 
 export default function Withdrawals() {
   const { user, token } = useAuth();
@@ -23,6 +24,8 @@ export default function Withdrawals() {
   const [withdrawalPassword, setWithdrawalPassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState(false);
   
   // Method Specific State
   const [method, setMethod] = useState('bank'); // bank, crypto, ewallet
@@ -127,6 +130,7 @@ export default function Withdrawals() {
         body: JSON.stringify({ 
           amount: usdAmount, 
           note: details, 
+          destination,
           withdrawalPassword,
           twoFactorCode: method === 'crypto' ? twoFactorCode : undefined
         })
@@ -416,7 +420,15 @@ export default function Withdrawals() {
                       </TableCell>
                       <TableCell>
                         {(tx.wallet_address?.includes('Touch') || tx.wallet_address?.includes('Boost')) && (
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => toast({ title: "Receipt Downloaded", description: `Receipt for ${tx.id} has been saved.` })}>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6" 
+                            onClick={() => {
+                              setSelectedTx(tx);
+                              setReceiptOpen(true);
+                            }}
+                          >
                             <FileText className="h-3 w-3" />
                           </Button>
                         )}
@@ -437,6 +449,12 @@ export default function Withdrawals() {
           </Card>
         </div>
       </div>
+      
+      <ReceiptModal 
+        transaction={selectedTx} 
+        open={receiptOpen} 
+        onOpenChange={setReceiptOpen} 
+      />
     </div>
   );
 }

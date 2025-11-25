@@ -7,9 +7,12 @@ import { validatePasswordStrength, verifyPassword } from "./crypto";
 import { z } from 'zod';
 import { registry } from './metrics';
 import { db } from './db';
-import { wallets as tblWallets, trades as tblTrades } from '@shared/schema';
+import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions } from '@shared/schema';
+import * as speakeasy from "speakeasy";
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
 import Redis from 'ioredis';
+
+import { notificationService } from "./services/notification";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -581,24 +584,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ok: true, wallet: responseWallet });
   });
 
-  const withdrawalSchema = z.object({ amount: z.number().positive(), note: z.string().max(200).optional(), withdrawalPassword: z.string().min(8).max(256), twoFactorCode: z.string().optional() });
+  const withdrawalSchema = z.object({ 
+    amount: z.number().positive(), 
+    note: z.string().max(200).optional(), 
+    withdrawalPassword: z.string().min(8).max(256), 
+    twoFactorCode: z.string().optional(),
+    destination: z.string().optional()
+  });
+
   app.post('/api/withdrawals', requireAuth, requireRateLimit('withdrawal', 5, 3600000), enforceTLS, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
     const parsed = withdrawalSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid request' });
-    const { amount, note, withdrawalPassword } = parsed.data;
+    
+    const { amount, note, withdrawalPassword, twoFactorCode, destination } = parsed.data;
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
+
     if (typeof withdrawalPassword !== 'string' || withdrawalPassword.trim() === '') {
       await storage.addSecurityEvent(userId, { type: 'withdrawal', timestamp: new Date(), ipAddress: ip, status: 'failed', details: 'Missing withdrawal password' });
       return res.status(400).json({ message: 'Withdrawal password required' });
     }
-    const isValid = await storage.verifyWithdrawalPassword(userId, withdrawalPassword);
-    if (!isValid) {
+    const isPasswordValid = await storage.verifyWithdrawalPassword(userId, withdrawalPassword);
+    if (!isPasswordValid) {
       await storage.addSecurityEvent(userId, { type: 'withdrawal', timestamp: new Date(), ipAddress: ip, status: 'failed', details: 'Invalid withdrawal password' });
       return res.status(401).json({ message: 'Invalid withdrawal password' });
     }
+
+    // Verify 2FA
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if ((user.twoFactorEnabled && user.twoFactorEnabled > 0) || twoFactorCode) {
+      if (user.twoFactorEnabled && user.twoFactorEnabled > 0 && !twoFactorCode) {
+         return res.status(400).json({ message: '2FA code required' });
+      }
+      
+      if (user.twoFactorSecret && twoFactorCode) {
+        const verified = speakeasy.totp.verify({
+          secret: user.twoFactorSecret,
+          encoding: 'base32',
+          token: twoFactorCode
+        });
+        if (!verified) {
+           await storage.addSecurityEvent(userId, { type: 'withdrawal', timestamp: new Date(), ipAddress: ip, status: 'failed', details: 'Invalid 2FA code' });
+           return res.status(401).json({ message: 'Invalid 2FA code' });
+        }
+      } else if (user.twoFactorEnabled && user.twoFactorEnabled > 0 && !user.twoFactorSecret) {
+         return res.status(500).json({ message: '2FA configuration error' });
+      }
+    }
+
     const amt = Number(amount || 0);
     if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
+    
     const w = await ensureUsdWallet(userId);
     if (db && 'balanceUsdCents' in w) {
       const dec = Math.round(amt * 100);
@@ -617,23 +655,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
       (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
       wallets.set(`${userId}:USD`, w as any);
     }
+
+    // Determine Status & 24h Hold
+    let status = 'Pending';
+    let detailsStr = note || '';
+
+    // Compliance & Risk Checks
+    if (user.kycStatus !== 'Verified') {
+       status = 'Compliance Hold';
+       detailsStr += ' (KYC Not Verified)';
+    }
+
+    if (amt > 10000) {
+       status = 'Manual Review';
+       detailsStr += ' (Large Amount)';
+       await notificationService.sendSecurityAlert(userId, user.username, `Large withdrawal amount: $${amt}`);
+    }
+    
+    if (destination && db) {
+       // Check if destination is new
+       const prevTx = await db.select().from(tblTransactions).where(
+          and(
+            eq(tblTransactions.userId, userId),
+            eq(tblTransactions.walletAddress, destination)
+          )
+       ).limit(1);
+
+       if (prevTx.length === 0) {
+         status = 'On Hold'; 
+         detailsStr += ' (New Address - 24h Hold)';
+       }
+       
+       // High Frequency Check
+       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+       const recentWithdrawals = await db.select().from(tblTransactions).where(
+         and(
+            eq(tblTransactions.userId, userId),
+            eq(tblTransactions.type, 'withdrawal'),
+            gte(tblTransactions.createdAt, oneHourAgo)
+         )
+       );
+       if (recentWithdrawals.length >= 3) {
+          status = 'Security Hold';
+          detailsStr += ' (High Frequency)';
+          await notificationService.sendSecurityAlert(userId, user.username, 'High frequency withdrawals detected');
+       }
+    }
+
+    // Record Transaction
+    if (db) {
+       await db.insert(tblTransactions).values({
+         userId,
+         type: 'withdrawal',
+         asset: 'USD',
+         amountUsdCents: Math.round(amt * 100),
+         walletAddress: destination,
+         status: status,
+         createdAt: new Date().toISOString()
+       });
+    }
+
+    if (status === 'Pending' || status === 'Withdrawal submitted successfully.') {
+       await notificationService.sendWithdrawalConfirmation(userId, user.username, amt, 'USD');
+    }
+
     await storage.addSecurityEvent(userId, {
       type: 'withdrawal',
       timestamp: new Date(),
       ipAddress: ip,
       status: 'success',
-      details: `Withdrawal of $${amt}${note ? ` - ${note}` : ''}`
+      details: `Withdrawal of $${amt} - ${status}${detailsStr ? ` - ${detailsStr}` : ''}`
     });
+    
     adminAudits.push({
       id: Math.random().toString(36).slice(2,9),
       adminId: 'system',
       userId,
       action: 'withdraw',
-      details: JSON.stringify({ amount: amt, note }),
+      details: JSON.stringify({ amount: amt, note: detailsStr, status, destination }),
       timestamp: new Date().toISOString()
     });
+    
     const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
-    res.json({ ok: true, wallet: responseWallet });
+    res.json({ ok: true, wallet: responseWallet, status, message: status === 'On Hold' ? 'Withdrawal placed on 24h security hold (new address).' : 'Withdrawal submitted successfully.' });
   });
 
   const clients = new Set<any>();

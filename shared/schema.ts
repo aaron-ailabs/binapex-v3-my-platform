@@ -14,6 +14,8 @@ export const users = pgTable("users", {
   withdrawalPasswordEnc: text("withdrawal_password_enc"),
   withdrawalPasswordIv: text("withdrawal_password_iv"),
   withdrawalPasswordTag: text("withdrawal_password_tag"),
+  twoFactorSecret: text("two_factor_secret"),
+  twoFactorEnabled: integer("two_factor_enabled").default(0),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -40,6 +42,7 @@ export const transactions = pgTable("transactions", {
   type: text("type").notNull(),
   asset: text("asset").notNull(),
   amountUsdCents: integer("amount_usd_cents").notNull().default(0),
+  walletAddress: text("wallet_address"),
   status: text("status").notNull(),
   createdAt: text("created_at").notNull(),
 }, (table) => ({

@@ -74,6 +74,8 @@ export class MemStorage implements IStorage {
       withdrawalPasswordEnc: null,
       withdrawalPasswordIv: null,
       withdrawalPasswordTag: null,
+      twoFactorSecret: null,
+      twoFactorEnabled: 0,
       securitySettings: {
         twoFactorEnabled: false,
         emailVerified: false,
@@ -164,6 +166,8 @@ export class PgStorage implements IStorage {
       withdrawalPasswordEnc: updates.withdrawalPasswordEncPayload?.encrypted,
       withdrawalPasswordIv: updates.withdrawalPasswordEncPayload?.iv,
       withdrawalPasswordTag: updates.withdrawalPasswordEncPayload?.authTag,
+      twoFactorSecret: updates.twoFactorSecret,
+      twoFactorEnabled: updates.twoFactorEnabled,
     }).where(eq(users.id, id)).returning()
     return row ? ({ ...row } as any) : undefined
   }
