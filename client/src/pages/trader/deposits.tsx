@@ -1,5 +1,5 @@
 import { useAuth } from '@/lib/auth';
-import { db, Transaction } from '@/lib/mock-data';
+import { db, Transaction, DepositSettings } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,11 +18,13 @@ export default function Deposits() {
   const [amount, setAmount] = useState('');
   const [asset, setAsset] = useState('USD');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [depositSettings, setDepositSettings] = useState<DepositSettings | null>(null);
 
   useEffect(() => {
     if (user) {
       setTransactions(db.getUserTransactions(user.id).filter(t => t.type === 'Deposit'));
     }
+    setDepositSettings(db.getDepositSettings());
   }, [user]);
 
   const handleDeposit = () => {
@@ -97,22 +99,37 @@ export default function Deposits() {
         </Card>
 
         <Card>
-           <CardHeader>
-             <CardTitle>Deposit Instructions</CardTitle>
-           </CardHeader>
-           <CardContent className="space-y-4 text-sm text-muted-foreground">
-              <p>1. Select the asset you wish to deposit.</p>
-              <p>2. Send the funds to the dedicated wallet address provided (for Crypto) or Bank Account (for Fiat).</p>
-              <p>3. Upload a screenshot or PDF receipt of the transaction.</p>
-              <p>4. Our team will verify and credit your account within 24 hours.</p>
-              
-              <div className="bg-muted p-4 rounded-md mt-4">
-                <p className="font-bold text-foreground mb-1">Bank Transfer Details:</p>
-                <p>Bank: Global Finance Bank</p>
-                <p>Account: 1234567890</p>
-                <p>Swift: GFBUS33</p>
-              </div>
-           </CardContent>
+          <CardHeader>
+            <CardTitle>Deposit Instructions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm text-muted-foreground">
+             <p>1. Select the asset you wish to deposit.</p>
+             <p>2. Send the funds to the dedicated wallet address provided (Crypto) or Bank/eWallet (Fiat MYR).</p>
+             <p>3. Upload a screenshot or PDF receipt of the transaction.</p>
+             <p>4. Our team will verify and credit your account within 24 hours.</p>
+
+             {depositSettings && (
+               <div className="bg-muted p-4 rounded-md mt-4 space-y-3">
+                 <p className="font-bold text-foreground mb-1">Bank Transfer (MYR):</p>
+                 <p>Bank: {depositSettings.bank.bank_name}</p>
+                 <p>Account Name: {depositSettings.bank.account_name}</p>
+                 <p>Account Number: {depositSettings.bank.account_number}</p>
+
+                 <div className="h-px bg-border my-2" />
+
+                 <p className="font-bold text-foreground mb-1">eWallet (Malaysia):</p>
+                 <p>Provider: {depositSettings.ewallet.provider}</p>
+                 <p>Account ID: {depositSettings.ewallet.account_id}</p>
+
+                 {depositSettings.qr_code_url && (
+                   <div className="mt-3">
+                     <p className="font-bold text-foreground mb-2">QR Pay:</p>
+                     <img src={depositSettings.qr_code_url} alt="QR Code" className="w-40 h-40 rounded border" />
+                   </div>
+                 )}
+               </div>
+             )}
+          </CardContent>
         </Card>
       </div>
 

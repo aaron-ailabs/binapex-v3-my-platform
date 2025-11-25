@@ -196,6 +196,20 @@ export default function UserManagement() {
                                   </SelectContent>
                                 </Select>
                              </div>
+                             <div className="grid grid-cols-2 gap-4">
+                               <div className="space-y-2">
+                                 <Label>Phone</Label>
+                                 <Input value={selectedUser.phone || ''} onChange={(e) => setSelectedUser({ ...selectedUser, phone: e.target.value })} />
+                               </div>
+                               <div className="space-y-2">
+                                 <Label>Bank Name</Label>
+                                 <Input value={selectedUser.bank_account?.bank_name || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), bank_name: e.target.value } })} />
+                               </div>
+                               <div className="space-y-2 col-span-2">
+                                 <Label>Bank Account Number</Label>
+                                 <Input value={selectedUser.bank_account?.account_number || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), account_number: e.target.value } })} />
+                               </div>
+                             </div>
                              {selectedUser && (
                                <div className="space-y-3 border-t pt-4">
                                  <Label>Credit Score</Label>

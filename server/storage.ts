@@ -8,6 +8,7 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -29,9 +30,23 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      ...insertUser, 
+      id, 
+      role: 'Trader', 
+      kycStatus: 'Not Started', 
+      membershipTier: 'Silver'
+    };
     this.users.set(id, user);
     return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const current = this.users.get(id);
+    if (!current) return undefined;
+    const next: User = { ...current, ...updates } as User;
+    this.users.set(id, next);
+    return next;
   }
 }
 

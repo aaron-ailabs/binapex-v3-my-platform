@@ -13,6 +13,8 @@ import { useToast } from '@/hooks/use-toast';
 export default function Support() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const wsBase = (import.meta.env.VITE_WS_BASE as string) || '';
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -37,13 +39,15 @@ export default function Support() {
       try {
         if (initRef.current) return;
         initRef.current = true;
-        const statusRes = await fetch('/api/support/status');
+        const statusRes = await fetch(`${apiBase}/support/status`);
         const p = await statusRes.json();
         setPresence(p);
-        const res = await fetch('/api/support/session', { method: 'POST' });
+        const res = await fetch(`${apiBase}/support/session`, { method: 'POST' });
         const data = await res.json();
         setSessionId(data.sessionId);
-        const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?sessionId=${data.sessionId}&role=trader`);
+        const defaultWs = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+        const targetWs = wsBase ? `${wsBase.replace(/^http/,'ws')}/ws` : defaultWs;
+        const ws = new WebSocket(`${targetWs}?sessionId=${data.sessionId}&role=trader`);
         wsRef.current = ws;
         ws.onmessage = (ev) => {
           try {
@@ -55,7 +59,7 @@ export default function Support() {
               setTimeout(() => setTyping(false), 1200);
             } else if (payload.type === 'message') {
               const d = payload.data;
-              setMessages((prev) => [...prev, { sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, attachmentUrl: d.attachmentId ? `/api/chat/file/${d.attachmentId}` : undefined }]);
+              setMessages((prev) => [...prev, { sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, attachmentUrl: d.attachmentId ? `${apiBase}/chat/file/${d.attachmentId}` : undefined }]);
             }
           } catch {}
         };
@@ -118,7 +122,7 @@ export default function Support() {
     let binary = '';
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     const base64 = btoa(binary);
-    const res = await fetch('/api/chat/upload', {
+    const res = await fetch(`${apiBase}/chat/upload`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename: file.name, mimeType: file.type, contentBase64: base64 })

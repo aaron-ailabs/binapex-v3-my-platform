@@ -52,6 +52,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/admin/users', label: 'User Management', icon: Users },
     { href: '/admin/kyc', label: 'KYC Queue', icon: FileText },
+    { href: '/admin/transactions#funding', label: 'Funding Settings', icon: CreditCard },
     { href: '/admin/transactions', label: 'Transactions', icon: CreditCard },
   ];
 
