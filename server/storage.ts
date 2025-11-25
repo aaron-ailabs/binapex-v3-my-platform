@@ -1,8 +1,8 @@
-import { type User, type InsertUser, users, securityEvents } from "@shared/schema";
+import { type User, type InsertUser, users, securityEvents, notifications, type Notification, type InsertNotification } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { hashPassword, verifyPassword, encrypt } from './crypto';
 import { db, hasDb } from './db';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and } from 'drizzle-orm';
 
 // Extended user interface with security features
 export interface SecureUser extends User {
@@ -39,15 +39,21 @@ export interface IStorage {
   verifyWithdrawalPassword(userId: string, password: string): Promise<boolean>;
   addSecurityEvent(userId: string, event: Omit<SecurityEvent, 'id'>): Promise<void>;
   getSecurityEvents(userId: string, limit?: number): Promise<SecurityEvent[]>;
+  getUserByResetToken(token: string): Promise<SecureUser | undefined>;
+  addNotification(notification: InsertNotification): Promise<Notification>;
+  getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]>;
+  markNotificationRead(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, SecureUser>;
   private securityEvents: Map<string, SecurityEvent[]>;
+  private notifications: Map<string, Notification>;
 
   constructor() {
     this.users = new Map();
     this.securityEvents = new Map();
+    this.notifications = new Map();
   }
 
   async getUser(id: string): Promise<SecureUser | undefined> {
@@ -57,6 +63,12 @@ export class MemStorage implements IStorage {
   async getUserByUsername(username: string): Promise<SecureUser | undefined> {
     return Array.from(this.users.values()).find(
       (user) => user.username === username,
+    );
+  }
+
+  async getUserByResetToken(token: string): Promise<SecureUser | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.resetPasswordToken === token,
     );
   }
 
@@ -76,6 +88,8 @@ export class MemStorage implements IStorage {
       withdrawalPasswordTag: null,
       twoFactorSecret: null,
       twoFactorEnabled: 0,
+      resetPasswordToken: null,
+      resetPasswordExpires: null,
       securitySettings: {
         twoFactorEnabled: false,
         emailVerified: false,
@@ -131,6 +145,33 @@ export class MemStorage implements IStorage {
     const events = this.securityEvents.get(userId) || [];
     return events.slice(0, limit);
   }
+
+  async addNotification(notification: InsertNotification): Promise<Notification> {
+    const id = randomUUID();
+    const newNotification: Notification = {
+      ...notification,
+      id,
+      read: 0,
+      createdAt: new Date(),
+      title: notification.title || null
+    };
+    this.notifications.set(id, newNotification);
+    return newNotification;
+  }
+
+  async getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(n => n.userId === userId && (!unreadOnly || n.read === 0))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    const notification = this.notifications.get(id);
+    if (notification) {
+      notification.read = 1;
+      this.notifications.set(id, notification);
+    }
+  }
 }
 
 export const storage = new MemStorage();
@@ -146,6 +187,13 @@ export class PgStorage implements IStorage {
   async getUserByUsername(username: string): Promise<SecureUser | undefined> {
     if (!db) return undefined
     const rows = await db.select().from(users).where(eq(users.username, username)).limit(1)
+    const u = rows[0]
+    if (!u) return undefined
+    return { ...u }
+  }
+  async getUserByResetToken(token: string): Promise<SecureUser | undefined> {
+    if (!db) return undefined
+    const rows = await db.select().from(users).where(eq(users.resetPasswordToken, token)).limit(1)
     const u = rows[0]
     if (!u) return undefined
     return { ...u }
@@ -168,6 +216,8 @@ export class PgStorage implements IStorage {
       withdrawalPasswordTag: updates.withdrawalPasswordEncPayload?.authTag,
       twoFactorSecret: updates.twoFactorSecret,
       twoFactorEnabled: updates.twoFactorEnabled,
+      resetPasswordToken: updates.resetPasswordToken,
+      resetPasswordExpires: updates.resetPasswordExpires,
     }).where(eq(users.id, id)).returning()
     return row ? ({ ...row } as any) : undefined
   }
@@ -204,6 +254,28 @@ export class PgStorage implements IStorage {
     if (!db) return []
     const rows = await db.select().from(securityEvents).where(eq(securityEvents.userId, userId)).orderBy(desc(securityEvents.occurredAt)).limit(limit)
     return rows.map((r) => ({ id: r.id, type: r.type as any, timestamp: r.occurredAt as any, ipAddress: r.ipAddress, status: r.status as any, details: r.details ?? undefined }))
+  }
+
+  async addNotification(notification: InsertNotification): Promise<Notification> {
+    if (!db) throw new Error('No database');
+    const [row] = await db.insert(notifications).values(notification).returning();
+    return row;
+  }
+
+  async getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]> {
+    if (!db) return [];
+    let query = db.select().from(notifications).where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt));
+    
+    if (unreadOnly) {
+      query = db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.read, 0))).orderBy(desc(notifications.createdAt));
+    }
+    
+    return await query;
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    if (!db) return;
+    await db.update(notifications).set({ read: 1 }).where(eq(notifications.id, id));
   }
 }
 

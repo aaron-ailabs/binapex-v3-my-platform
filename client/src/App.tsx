@@ -7,6 +7,7 @@ import Layout from "@/components/layout";
 import NotFound from "@/pages/not-found";
 
 import AuthPage from "@/pages/auth-page";
+import ResetPasswordPage from "@/pages/reset-password-page";
 import LandingPage from "@/pages/landing-page"; // Import Landing Page
 import TraderDashboard from "@/pages/trader/dashboard";
 import LiveTrading from "@/pages/trader/live-trading";
@@ -65,6 +66,7 @@ function Router() {
       </Route>
       
       <Route path="/auth" component={AuthPage} />
+      <Route path="/auth/reset-password" component={ResetPasswordPage} />
       
       {/* Trader Routes */}
       <Route path="/dashboard">

@@ -3,7 +3,7 @@ import { type Express, type Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storageDb as storage } from "./storage";
 import { createHmac, randomBytes } from "crypto";
-import { validatePasswordStrength, verifyPassword } from "./crypto";
+import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPassword } from "./crypto";
 import { z } from 'zod';
 import { registry } from './metrics';
 import { db } from './db';
@@ -67,6 +67,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   const loginSchema = z.object({ username: z.string().min(3).max(64), password: z.string().min(8).max(256) });
+  
+  const forgotPasswordSchema = z.object({ email: z.string().email() });
+  const resetPasswordSchema = z.object({ token: z.string(), password: z.string().min(8).max(256), confirmPassword: z.string().min(8).max(256) });
+
+  app.post('/api/auth/forgot-password', requireRateLimit('forgot-password', 3, 3600000), enforceTLS, async (req: Request, res: Response) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid email format' });
+    
+    const { email } = parsed.data;
+    // Assuming username is email. If separate email field exists, use it.
+    // Based on previous checks, username is the identifier. 
+    // If the system strictly uses email as username, this is fine.
+    // If username is not email, we should look up by email field if it existed, but it doesn't.
+    // So we assume username === email.
+    
+    const user = await storage.getUserByUsername(email);
+    
+    // Always return success to prevent user enumeration
+    if (!user) {
+      // Simulate delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return res.json({ message: 'If that email is registered, we have sent a password reset link.' });
+    }
+
+    const token = generateSecureToken(32);
+    const expires = Date.now() + 3600000; // 1 hour
+
+    await storage.updateUser(user.id, {
+      resetPasswordToken: token,
+      resetPasswordExpires: BigInt(expires) as unknown as bigint // Type cast for BigInt if needed by Drizzle
+    });
+
+    const resetLink = `${req.protocol}://${req.get('host')}/auth/reset-password?token=${token}`;
+    
+    // In dev, we might want to return the token for testing, but let's stick to "sent" message.
+    // The NotificationService will log it to console.
+    await notificationService.send({
+        userId: user.id,
+        type: 'EMAIL',
+        recipient: email,
+        subject: 'Reset Your Password - Binapex',
+        message: `You requested a password reset. Click here to reset your password: ${resetLink}\n\nThis link expires in 1 hour.`
+    });
+
+    res.json({ message: 'If that email is registered, we have sent a password reset link.' });
+  });
+
+  app.post('/api/auth/reset-password', requireRateLimit('reset-password', 5, 3600000), enforceTLS, async (req: Request, res: Response) => {
+    const parsed = resetPasswordSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid request format' });
+    
+    const { token, password, confirmPassword } = parsed.data;
+    
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: 'Passwords do not match' });
+    }
+
+    const strength = validatePasswordStrength(password);
+    if (!strength.isValid) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters and contain uppercase, lowercase, number, and special characters' });
+    }
+
+    const user = await storage.getUserByResetToken(token);
+    if (!user || !user.resetPasswordExpires) {
+        return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const now = Date.now();
+    // Compare BigInt with Number (convert BigInt to Number or Number to BigInt)
+    // resetPasswordExpires is bigint in DB.
+    if (Number(user.resetPasswordExpires) < now) {
+        return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    const hashedPassword = hashPassword(password);
+    
+    await storage.updateUser(user.id, {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null,
+        securitySettings: {
+            ...user.securitySettings!,
+            lastPasswordChange: new Date()
+        }
+    });
+    
+    await notificationService.send({
+        userId: user.id,
+        type: 'EMAIL',
+        recipient: user.username,
+        subject: 'Password Changed - Binapex',
+        message: 'Your password has been successfully changed. If you did not make this change, please contact support immediately.'
+    });
+
+    res.json({ message: 'Password reset successfully' });
+  });
+
   app.post('/api/auth/login', async (req: Request, res: Response) => {
     const parsed = loginSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid credentials format' });

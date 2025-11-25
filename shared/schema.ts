@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, index, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -16,6 +16,8 @@ export const users = pgTable("users", {
   withdrawalPasswordTag: text("withdrawal_password_tag"),
   twoFactorSecret: text("two_factor_secret"),
   twoFactorEnabled: integer("two_factor_enabled").default(0),
+  resetPasswordToken: text("reset_password_token"),
+  resetPasswordExpires: bigint("reset_password_expires", { mode: "number" }),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -83,3 +85,26 @@ export const trades = pgTable("trades", {
   trades_symbol_idx: index("trades_symbol_idx").on(table.symbol),
   trades_time_idx: index("trades_time_idx").on(table.createdAt),
 }))
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(), // 'EMAIL', 'SMS', 'IN_APP', 'SYSTEM'
+  title: text("title"),
+  message: text("message").notNull(),
+  read: integer("read").default(0), // 0 = unread, 1 = read
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  notifications_user_idx: index("notifications_user_idx").on(table.userId),
+  notifications_read_idx: index("notifications_read_idx").on(table.read),
+}))
+
+export const insertNotificationSchema = createInsertSchema(notifications).pick({
+  userId: true,
+  type: true,
+  title: true,
+  message: true,
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
