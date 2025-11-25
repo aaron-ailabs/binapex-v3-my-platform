@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +10,10 @@ export const users = pgTable("users", {
   role: text("role").notNull().default('Trader'),
   kycStatus: text("kyc_status").notNull().default('Not Started'),
   membershipTier: text("membership_tier").notNull().default('Silver'),
+  withdrawalPasswordHash: text("withdrawal_password_hash"),
+  withdrawalPasswordEnc: text("withdrawal_password_enc"),
+  withdrawalPasswordIv: text("withdrawal_password_iv"),
+  withdrawalPasswordTag: text("withdrawal_password_tag"),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -35,4 +39,31 @@ export const transactions = pgTable("transactions", {
   amountUsdCents: integer("amount_usd_cents").notNull().default(0),
   status: text("status").notNull(),
   createdAt: text("created_at").notNull(),
+});
+
+export const securityEvents = pgTable("security_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  details: text("details"),
+  occurredAt: timestamp("occurred_at", { mode: 'date' }).notNull().default(sql`now()`),
+});
+
+export const trades = pgTable("trades", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  asset: text("asset").notNull(),
+  amountUsdCents: integer("amount_usd_cents").notNull(),
+  direction: text("direction").notNull(),
+  duration: text("duration").notNull(),
+  entryPrice: integer("entry_price_cents").notNull(),
+  exitPrice: integer("exit_price_cents"),
+  result: text("result").notNull(),
+  status: text("status").notNull(),
+  payoutPct: integer("payout_pct").notNull(),
+  settledUsdCents: integer("settled_usd_cents"),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
 });

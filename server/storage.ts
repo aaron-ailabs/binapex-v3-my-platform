@@ -1,11 +1,13 @@
-import { type User, type InsertUser } from "@shared/schema";
+import { type User, type InsertUser, users, securityEvents } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { hashPassword, verifyPassword, encrypt } from './crypto';
+import { db, hasDb } from './db';
+import { eq, desc } from 'drizzle-orm';
 
 // Extended user interface with security features
 export interface SecureUser extends User {
   withdrawalPassword?: string;
-  withdrawalPasswordEnc?: { encrypted: string; iv: string; authTag: string };
+  withdrawalPasswordEncPayload?: { encrypted: string; iv: string; authTag: string };
   securitySettings?: {
     twoFactorEnabled: boolean;
     emailVerified: boolean;
@@ -60,12 +62,18 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<SecureUser> {
     const id = randomUUID();
+    const hashed = hashPassword(insertUser.password);
     const user: SecureUser = {
       ...insertUser,
+      password: hashed,
       id,
       role: 'Trader',
       kycStatus: 'Not Started',
       membershipTier: 'Silver',
+      withdrawalPasswordHash: null,
+      withdrawalPasswordEnc: null,
+      withdrawalPasswordIv: null,
+      withdrawalPasswordTag: null,
       securitySettings: {
         twoFactorEnabled: false,
         emailVerified: false,
@@ -90,7 +98,8 @@ export class MemStorage implements IStorage {
     if (!user) return false;
     const hashedPassword = hashPassword(password);
     user.withdrawalPassword = hashedPassword;
-    user.withdrawalPasswordEnc = encrypt(password);
+    const enc = encrypt(hashedPassword);
+    user.withdrawalPasswordEncPayload = enc;
     return true;
   }
 
@@ -123,3 +132,75 @@ export class MemStorage implements IStorage {
 }
 
 export const storage = new MemStorage();
+
+export class PgStorage implements IStorage {
+  async getUser(id: string): Promise<SecureUser | undefined> {
+    if (!db) return undefined
+    const rows = await db.select().from(users).where(eq(users.id, id)).limit(1)
+    const u = rows[0]
+    if (!u) return undefined
+    return { ...u }
+  }
+  async getUserByUsername(username: string): Promise<SecureUser | undefined> {
+    if (!db) return undefined
+    const rows = await db.select().from(users).where(eq(users.username, username)).limit(1)
+    const u = rows[0]
+    if (!u) return undefined
+    return { ...u }
+  }
+  async createUser(insertUser: InsertUser): Promise<SecureUser> {
+    if (!db) throw new Error('No database')
+    const hashed = hashPassword(insertUser.password)
+    const [row] = await db.insert(users).values({ username: insertUser.username, password: hashed }).returning()
+    return { ...row }
+  }
+  async updateUser(id: string, updates: Partial<SecureUser>): Promise<SecureUser | undefined> {
+    if (!db) return undefined
+    const [row] = await db.update(users).set({
+      role: updates.role,
+      kycStatus: updates.kycStatus,
+      membershipTier: updates.membershipTier,
+      withdrawalPasswordHash: updates.withdrawalPassword,
+      withdrawalPasswordEnc: updates.withdrawalPasswordEncPayload?.encrypted,
+      withdrawalPasswordIv: updates.withdrawalPasswordEncPayload?.iv,
+      withdrawalPasswordTag: updates.withdrawalPasswordEncPayload?.authTag,
+    }).where(eq(users.id, id)).returning()
+    return row ? ({ ...row } as any) : undefined
+  }
+  async setWithdrawalPassword(userId: string, password: string): Promise<boolean> {
+    if (!db) return false
+    const hashed = hashPassword(password)
+    const enc = encrypt(hashed)
+    const [row] = await db.update(users).set({
+      withdrawalPasswordHash: hashed,
+      withdrawalPasswordEnc: enc.encrypted,
+      withdrawalPasswordIv: enc.iv,
+      withdrawalPasswordTag: enc.authTag,
+    }).where(eq(users.id, userId)).returning()
+    return !!row
+  }
+  async verifyWithdrawalPassword(userId: string, password: string): Promise<boolean> {
+    if (!db) return false
+    const rows = await db.select({ h: users.withdrawalPasswordHash }).from(users).where(eq(users.id, userId)).limit(1)
+    const h = rows[0]?.h
+    if (!h) return false
+    return verifyPassword(password, h)
+  }
+  async addSecurityEvent(userId: string, event: Omit<SecurityEvent, 'id'>): Promise<void> {
+    if (!db) return
+    await db.insert(securityEvents).values({
+      userId,
+      type: event.type,
+      status: event.status,
+      ipAddress: event.ipAddress,
+      details: event.details,
+    })
+  }
+  async getSecurityEvents(userId: string, limit: number = 20): Promise<SecurityEvent[]> {
+    if (!db) return []
+    const rows = await db.select().from(securityEvents).where(eq(securityEvents.userId, userId)).orderBy(desc(securityEvents.occurredAt)).limit(limit)
+    return rows.map((r) => ({ id: r.id, type: r.type as any, timestamp: r.occurredAt as any, ipAddress: r.ipAddress, status: r.status as any, details: r.details ?? undefined }))
+  }
+}
+
+export const storageDb = hasDb ? new PgStorage() : new MemStorage()

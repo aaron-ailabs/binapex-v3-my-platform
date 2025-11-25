@@ -1,6 +1,6 @@
 import assert from 'node:assert'
 
-const base = 'http://localhost:5000'
+const base = 'http://127.0.0.1:5000'
 
 async function json(url: string, init?: RequestInit) {
   const r = await fetch(url, init)

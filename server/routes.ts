@@ -1,8 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { createHmac } from "crypto";
-import { validatePasswordStrength } from "./crypto";
+import { storageDb as storage } from "./storage";
+import { createHmac, randomBytes } from "crypto";
+import { validatePasswordStrength, verifyPassword } from "./crypto";
+import { z } from 'zod';
+import { registry } from './metrics';
+import { db } from './db';
+import { wallets as tblWallets, trades as tblTrades } from '@shared/schema';
+import { eq, and, gte, sql as dsql } from 'drizzle-orm';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -11,11 +16,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // use storage to perform CRUD operations on the storage interface
   // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
 
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok' });
   });
 
-  const SECRET = process.env.JWT_SECRET || 'binapex-dev-secret';
+  app.get('/api/metrics', async (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  });
+
+  const SECRET = process.env.JWT_SECRET || randomBytes(32).toString('hex');
   const b64url = (buf: Buffer | string) => Buffer.from(buf as any).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
   const signJWT = (payload: Record<string, any>) => {
     const header = { alg: 'HS256', typ: 'JWT' };
@@ -51,41 +61,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   };
 
-  app.post('/api/auth/login', async (req, res) => {
-    const { username, password } = req.body || {};
-    if (!username || !password) return res.status(400).json({ message: 'Missing credentials' });
-    const user = await storage.getUserByUsername(String(username));
-    if (!user || user.password !== password) return res.status(401).json({ message: 'Invalid credentials' });
+  const loginSchema = z.object({ username: z.string().min(3).max(64), password: z.string().min(8).max(256) });
+  app.post('/api/auth/login', async (req: Request, res: Response) => {
+    const parsed = loginSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid credentials format' });
+    const { username: u, password: p } = parsed.data;
+    const user = await storage.getUserByUsername(u);
+    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    const ok = await verifyPassword(p, user.password);
+    if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
     const token = signJWT({ sub: user.id, role: user.role, username: user.username });
     res.json({ token, role: user.role, userId: user.id });
   });
 
-  app.get('/api/auth/verify', requireAuth, (req, res) => {
+  app.get('/api/auth/verify', requireAuth, (req: Request, res: Response) => {
     res.json((req as any).user);
   });
 
-  // Rate limiting middleware for security endpoints
-  const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-  const requireRateLimit = (key: string, maxAttempts: number, windowMs: number) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-      const now = Date.now();
-      const ip = req.ip || req.socket.remoteAddress || 'unknown';
-      const rateKey = `${key}:${ip}`;
-      let record = rateLimitStore.get(rateKey);
-      if (!record || now > record.resetTime) {
-        record = { count: 0, resetTime: now + windowMs };
-        rateLimitStore.set(rateKey, record);
-      }
-      record.count++;
-      if (record.count > maxAttempts) {
-        return res.status(429).json({
-          message: 'Too many attempts. Please try again later.',
-          retryAfter: Math.ceil((record.resetTime - now) / 1000)
-        });
-      }
-      next();
-    };
-  };
+  const { requireRateLimit } = await import('./rate-limit');
 
   const enforceTLS = (req: Request, res: Response, next: NextFunction) => {
     const env = (process.env.NODE_ENV || '').toLowerCase();
@@ -99,7 +92,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const verificationCodes = new Map<string, { code: string; expiresAt: number }>();
 
-  app.post('/api/security/request-verification', requireAuth, requireRateLimit('verification-send', 5, 3600000), enforceTLS, async (req, res) => {
+  app.post('/api/security/request-verification', requireAuth, requireRateLimit('verification-send', 5, 3600000), enforceTLS, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
     const { channel } = req.body || {};
     const ch = String(channel || 'email');
@@ -110,7 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(dev ? { sent: true, devCode: code } : { sent: true });
   });
 
-  app.post('/api/security/withdrawal-password', requireAuth, requireRateLimit('withdrawal-password-set', 3, 3600000), enforceTLS, async (req, res) => {
+  app.post('/api/security/withdrawal-password', requireAuth, requireRateLimit('withdrawal-password-set', 3, 3600000), enforceTLS, async (req: Request, res: Response) => {
     try {
       const userId = String(((req as any).user).sub || '');
       const { password, confirmPassword, code, channel } = req.body || {};
@@ -152,7 +145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/security/verify-withdrawal-password', requireAuth, requireRateLimit('withdrawal-password-verify', 5, 3600000), enforceTLS, async (req, res) => {
+  app.post('/api/security/verify-withdrawal-password', requireAuth, requireRateLimit('withdrawal-password-verify', 5, 3600000), enforceTLS, async (req: Request, res: Response) => {
     try {
       const userId = String(((req as any).user).sub || '');
       const { password } = req.body || {};
@@ -173,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/security/events', requireAuth, async (req, res) => {
+  app.get('/api/security/events', requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = String(((req as any).user).sub || '');
       const events = await storage.getSecurityEvents(userId);
@@ -183,11 +176,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Internal server error' });
     }
   });
-  app.get('/api/support/status', (_req, res) => {
+  app.get('/api/support/status', (_req: Request, res: Response) => {
     res.json(getPresence());
   });
 
-  app.post('/api/support/session', (_req, res) => {
+  app.post('/api/support/session', (_req: Request, res: Response) => {
     const id = Math.random().toString(36).slice(2, 10);
     res.json({ sessionId: id });
   });
@@ -202,10 +195,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
   seedAssets();
 
-  app.get('/api/assets', requireAuth, (_req, res) => {
+  app.get('/api/assets', requireAuth, (_req: Request, res: Response) => {
     res.json(Array.from(assets.entries()).map(([symbol, v]) => ({ symbol, ...v })));
   });
-  app.post('/api/assets/toggle', requireAuth, requireRole(['Admin']), (req, res) => {
+  app.post('/api/assets/toggle', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
     const { symbol, enabled } = req.body || {};
     const a = assets.get(String(symbol));
     if (!a) return res.status(404).json({ message: 'Not found' });
@@ -215,10 +208,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const engine = { spreadBps: 25, payoutPct: 85 };
-  app.get('/api/engine', requireAuth, (_req, res) => {
+  app.get('/api/engine', requireAuth, (_req: Request, res: Response) => {
     res.json(engine);
   });
-  app.post('/api/engine', requireAuth, requireRole(['Admin']), (req, res) => {
+  app.post('/api/engine', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
     const { spreadBps, payoutPct } = req.body || {};
     if (typeof spreadBps !== 'undefined') {
       engine.spreadBps = Number(spreadBps || engine.spreadBps);
@@ -231,7 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const ALPHA_KEY = process.env.ALPHAVANTAGE_API_KEY || '';
-  app.get('/api/prices/alpha', async (req, res, next) => {
+  app.get('/api/prices/alpha', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const s = String((req.query as any).symbol || '').trim();
       if (!s) return res.status(400).json({ message: 'Missing symbol' });
@@ -259,7 +252,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   // Safe image proxy to avoid cross-origin blocks in preview envs
-  app.get('/api/assets/proxy', async (req, res, next) => {
+  app.get('/api/assets/proxy', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const raw = (req.query.url as string) || '';
       const parsed = new URL(raw);
@@ -282,7 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Simple in-memory attachment handling
   const files = new Map<string, { mime: string; buf: Buffer; filename: string }>();
-  app.post('/api/chat/upload', async (req, res, next) => {
+  app.post('/api/chat/upload', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { filename, mimeType, contentBase64 } = req.body || {};
       const allowed = ['application/pdf', 'image/png', 'image/jpeg'];
@@ -302,7 +295,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/chat/file/:id', (req, res) => {
+  app.get('/api/chat/file/:id', (req: Request, res: Response) => {
     const id = req.params.id;
     const f = files.get(id);
     if (!f) return res.status(404).end();
@@ -311,7 +304,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.end(f.buf);
   });
 
-  app.post('/api/demo/seed', async (_req, res) => {
+  app.post('/api/demo/seed', async (_req: Request, res: Response) => {
     const users = [
       { username: 'trader', password: 'password', role: 'Trader' },
       { username: 'admin', password: 'password', role: 'Admin' },
@@ -337,29 +330,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const trades = new Map<string, { id: string; userId: string; asset: string; symbol: string; amount: number; direction: 'High'|'Low'; duration: string; entryPrice: number; exitPrice?: number; result: 'Win'|'Loss'|'Pending'; status: 'Open'|'Closed'; createdAt: string; settledUsd?: number; payoutPct?: number }>();
   const adminAudits: { id: string; adminId: string; userId: string; action: string; details: string; timestamp: string }[] = [];
 
-  const ensureUsdWallet = (userId: string) => {
+  const ensureUsdWallet = async (userId: string) => {
     const key = `${userId}:USD`;
     let w = wallets.get(key);
     if (!w) {
       w = { id: Math.random().toString(36).slice(2,9), userId, assetName: 'USD', balanceUsd: 0 };
       wallets.set(key, w);
     }
-    return w;
+    if (db) {
+      const existing = await db.select().from(tblWallets).where(eq(tblWallets.userId, userId)).limit(1);
+      if (existing[0]) return existing[0] as any;
+      const [created] = await db.insert(tblWallets).values({ userId, assetName: 'USD', balanceUsdCents: 0 }).returning();
+      return created as any;
+    }
+    return w as any;
   };
 
-  app.get('/api/wallets', requireAuth, (req, res) => {
+  app.get('/api/wallets', requireAuth, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
+    if (db) {
+      const list = await db.select().from(tblWallets).where(eq(tblWallets.userId, userId));
+      const out = list.map(w => ({ id: w.id, userId: w.userId, assetName: w.assetName, balanceUsd: Number((w.balanceUsdCents/100).toFixed(2)) }));
+      return res.json(out);
+    }
     const list = Array.from(wallets.values()).filter(w => w.userId === userId);
     res.json(list);
   });
 
-  app.get('/api/trades', requireAuth, (req, res) => {
+  app.get('/api/trades', requireAuth, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
+    if (db) {
+      const list = await db.select().from(tblTrades).where(eq(tblTrades.userId, userId));
+      const out = list.map(t => ({
+        id: t.id, userId: t.userId, asset: t.asset, symbol: t.symbol,
+        amount: Number((t.amountUsdCents/100).toFixed(2)), direction: t.direction as any,
+        duration: t.duration, entryPrice: Number((t.entryPrice/100).toFixed(2)), exitPrice: t.exitPrice ? Number((t.exitPrice/100).toFixed(2)) : undefined,
+        result: t.result as any, status: t.status as any, createdAt: (t.createdAt as any as Date).toISOString(), settledUsd: t.settledUsdCents ? Number((t.settledUsdCents/100).toFixed(2)) : undefined, payoutPct: t.payoutPct
+      }));
+      return res.json(out);
+    }
     const list = Array.from(trades.values()).filter(t => t.userId === userId);
     res.json(list);
   });
 
-  app.post('/api/trades', requireAuth, (req, res) => {
+  app.post('/api/trades', requireAuth, (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
     const { symbol, asset, amount, direction, duration } = req.body || {};
     let reg = assets.get(String(symbol));
@@ -374,6 +388,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const id = Math.random().toString(36).slice(2,9);
     const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
     trades.set(id, t);
+    if (db) {
+      db.insert(tblTrades).values({
+        id,
+        userId,
+        asset: t.asset,
+        symbol: t.symbol,
+        amountUsdCents: Math.round(t.amount * 100),
+        direction: t.direction,
+        duration: t.duration,
+        entryPrice: Math.round(t.entryPrice * 100),
+        result: t.result,
+        status: t.status,
+        payoutPct: t.payoutPct ?? engine.payoutPct,
+      }).catch(() => {});
+    }
     const parseMs = (d: string) => {
       const s = String(d).trim().toUpperCase();
       if (s.endsWith('M')) return Number(s.slice(0, -1)) * 60_000;
@@ -382,25 +411,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     const scale = Number(process.env.TRADING_DURATION_SCALE || '1');
     const ms = Math.max(1000, Math.floor(parseMs(t.duration) * (Number.isFinite(scale) && scale > 0 ? scale : 1)));
-    setTimeout(() => {
+    setTimeout(async () => {
       const move = (Math.random() * 2 - 1) * (engine.spreadBps / 10000) * 10;
       const exit = Number((t.entryPrice * (1 + move)).toFixed(2));
       const wentUp = exit >= t.entryPrice;
       const win = (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
       const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss' };
       trades.set(id, updated);
-      const w = ensureUsdWallet(userId);
+      const w = await ensureUsdWallet(userId);
       const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
       const settled = win ? payout : -t.amount;
-      w.balanceUsd = Number((w.balanceUsd + settled).toFixed(2));
-      wallets.set(`${userId}:USD`, w);
-      trades.set(id, { ...updated, settledUsd: settled });
+      if (db && 'balanceUsdCents' in w) {
+        try {
+          await db.update(tblWallets)
+            .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(settled * 100)}` })
+            .where(eq(tblWallets.id, (w as any).id));
+          await db.update(tblTrades).set({ exitPrice: Math.round(exit * 100), status: 'Closed', result: updated.result, settledUsdCents: Math.round(settled * 100) }).where(eq(tblTrades.id, id));
+        } catch {}
+      } else {
+        (w as any).balanceUsd = Number(((w as any).balanceUsd + settled).toFixed(2));
+        wallets.set(`${userId}:USD`, w as any);
+        trades.set(id, { ...updated, settledUsd: settled });
+      }
       adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'trade_close', details: JSON.stringify({ tradeId: id, result: updated.result, exitPrice: exit, settledUsd: settled }), timestamp: new Date().toISOString() });
     }, ms);
     res.json(t);
   });
 
-  app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), (req, res) => {
+  app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
     const { tradeId, result, exitPrice } = req.body || {};
     const t = trades.get(String(tradeId));
     if (!t) return res.status(404).json({ message: 'Not found' });
@@ -411,9 +449,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
     const settled = win ? payout : -t.amount;
     const delta = Number((settled - prev).toFixed(2));
-    const w = ensureUsdWallet(t.userId);
-    w.balanceUsd = Number((w.balanceUsd + delta).toFixed(2));
-    wallets.set(`${t.userId}:USD`, w);
+    const w = await ensureUsdWallet(t.userId);
+    if (db && 'balanceUsdCents' in w) {
+      try {
+        await db.update(tblWallets)
+          .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(delta * 100)}` })
+          .where(eq(tblWallets.id, (w as any).id));
+        await db.update(tblTrades)
+          .set({ exitPrice: Math.round(exit * 100), status: 'Closed', result: win ? 'Win' : 'Loss', settledUsdCents: Math.round(settled * 100) })
+          .where(eq(tblTrades.id, String(tradeId)));
+      } catch {}
+    } else {
+      (w as any).balanceUsd = Number(((w as any).balanceUsd + delta).toFixed(2));
+      wallets.set(`${t.userId}:USD`, w as any);
+    }
       const updated = { ...t, exitPrice: exit, status: 'Closed' as 'Closed', result: (win ? 'Win' : 'Loss') as 'Win'|'Loss', settledUsd: settled };
     trades.set(String(tradeId), updated);
     const adminId = String(((req as any).user).sub || '');
@@ -421,25 +470,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(updated);
   });
 
-  app.get('/api/admin/audit', requireAuth, requireRole(['Admin']), (_req, res) => {
+  app.get('/api/admin/audit', requireAuth, requireRole(['Admin']), (_req: Request, res: Response) => {
     res.json(adminAudits.slice(-200));
   });
 
-  app.post('/api/deposits', requireAuth, (req, res) => {
+  const depositSchema = z.object({ amount: z.number().positive(), note: z.string().max(200).optional() });
+  app.post('/api/deposits', requireAuth, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
-    const { amount, note } = req.body || {};
-    const amt = Number(amount || 0);
-    if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
-    const w = ensureUsdWallet(userId);
-    w.balanceUsd = Number((w.balanceUsd + amt).toFixed(2));
-    wallets.set(`${userId}:USD`, w);
+    const parsed = depositSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid request' });
+    const { amount: amt, note } = parsed.data;
+    const w = await ensureUsdWallet(userId);
+    if (db && 'balanceUsdCents' in w) {
+      try {
+        await db.update(tblWallets)
+          .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${Math.round(amt * 100)}` })
+          .where(eq(tblWallets.id, (w as any).id));
+      } catch {}
+    } else {
+      (w as any).balanceUsd = Number(((w as any).balanceUsd + amt).toFixed(2));
+      wallets.set(`${userId}:USD`, w as any);
+    }
     adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'deposit', details: JSON.stringify({ amount: amt, note }), timestamp: new Date().toISOString() });
-    res.json({ ok: true, wallet: w });
+    const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
+    res.json({ ok: true, wallet: responseWallet });
   });
 
-  app.post('/api/withdrawals', requireAuth, requireRateLimit('withdrawal', 5, 3600000), enforceTLS, async (req, res) => {
+  const withdrawalSchema = z.object({ amount: z.number().positive(), note: z.string().max(200).optional(), withdrawalPassword: z.string().min(8).max(256) });
+  app.post('/api/withdrawals', requireAuth, requireRateLimit('withdrawal', 5, 3600000), enforceTLS, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
-    const { amount, note, withdrawalPassword } = req.body || {};
+    const parsed = withdrawalSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid request' });
+    const { amount, note, withdrawalPassword } = parsed.data;
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     if (typeof withdrawalPassword !== 'string' || withdrawalPassword.trim() === '') {
       await storage.addSecurityEvent(userId, { type: 'withdrawal', timestamp: new Date(), ipAddress: ip, status: 'failed', details: 'Missing withdrawal password' });
@@ -452,10 +514,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const amt = Number(amount || 0);
     if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
-    const w = ensureUsdWallet(userId);
-    if (w.balanceUsd < amt) return res.status(400).json({ message: 'Insufficient balance' });
-    w.balanceUsd = Number((w.balanceUsd - amt).toFixed(2));
-    wallets.set(`${userId}:USD`, w);
+    const w = await ensureUsdWallet(userId);
+    if (db && 'balanceUsdCents' in w) {
+      const dec = Math.round(amt * 100);
+      try {
+        const updated = await db
+          .update(tblWallets)
+          .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} - ${dec}` })
+          .where(and(eq(tblWallets.id, (w as any).id), gte(tblWallets.balanceUsdCents, dec)))
+          .returning({ id: tblWallets.id });
+        if (!updated[0]) return res.status(400).json({ message: 'Insufficient balance' });
+      } catch {
+        return res.status(500).json({ message: 'Withdrawal failed' });
+      }
+    } else {
+      if ((w as any).balanceUsd < amt) return res.status(400).json({ message: 'Insufficient balance' });
+      (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
+      wallets.set(`${userId}:USD`, w as any);
+    }
     await storage.addSecurityEvent(userId, {
       type: 'withdrawal',
       timestamp: new Date(),
@@ -471,14 +547,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       details: JSON.stringify({ amount: amt, note }),
       timestamp: new Date().toISOString()
     });
-    res.json({ ok: true, wallet: w });
+    const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
+    res.json({ ok: true, wallet: responseWallet });
   });
 
   const clients = new Set<any>();
   const tracked = new Set<string>();
   const cache = new Map<string, number>();
   const computeBase = (s: string) => Math.abs(s.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000 + 100;
-  app.get('/api/prices/stream', (req, res) => {
+  app.get('/api/prices/stream', (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -534,7 +611,7 @@ export function setPresence(p: Partial<Presence>) {
 }
 
 export function registerPresenceRoutes(app: Express, onUpdate?: (p: Presence) => void) {
-  app.post('/api/support/presence', (req, res) => {
+  app.post('/api/support/presence', (req: Request, res: Response) => {
     const { status, waitTimeMins } = req.body || {};
     if (status && !['online','away','offline'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });

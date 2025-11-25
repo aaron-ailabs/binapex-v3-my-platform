@@ -2,9 +2,14 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, getPresence, registerPresenceRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { WebSocketServer } from "ws";
+import type { WebSocket } from "ws";
 import type { IncomingMessage } from "http";
+import { securityHeaders } from './security'
+import { httpRequests, httpDuration } from './metrics'
 
 const app = express();
+
+const apiLogWindows = new Map<string, { start: number; count: number; suppressedNoted: boolean }>();
 
 declare module 'http' {
   interface IncomingMessage {
@@ -18,6 +23,16 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+app.use(securityHeaders);
+app.use((req, res, next) => {
+  const isDev = app.get('env') === 'development';
+  const origin = isDev ? '*' : (process.env.CORS_ORIGIN || '*');
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -32,6 +47,10 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
+    if (path.startsWith('/api')) {
+      try { httpRequests.inc({ method: req.method, route: path, status: String(res.statusCode) }); } catch {}
+      try { httpDuration.observe({ method: req.method, route: path, status: String(res.statusCode) }, duration); } catch {}
+    }
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
@@ -66,6 +85,14 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+
+  if (app.get('env') !== 'development') {
+    const required = ['JWT_SECRET', 'ENCRYPTION_KEY', 'ENCRYPTION_SALT'];
+    const missing = required.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
+    if (missing.length) {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -110,7 +137,7 @@ app.use((req, res, next) => {
     timestamp: number;
   };
 
-  const sessions = new Map<string, Set<any>>();
+  const sessions = new Map<string, Set<WebSocket>>();
   const transcripts = new Map<string, ChatMessage[]>();
   function broadcastPresenceUpdate() {
     const p = getPresence();
@@ -159,7 +186,7 @@ app.use((req, res, next) => {
     broadcast(sessionId, msg);
   }
 
-  wss.on("connection", (ws, req: IncomingMessage) => {
+  wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || "", `http://${req.headers.host}`);
     const sessionId = url.searchParams.get("sessionId") || "default";
     const role = (url.searchParams.get("role") || "trader") as Sender;
@@ -200,9 +227,8 @@ app.use((req, res, next) => {
   });
 
   // Chat history endpoint for moderation and session persistence
-  app.get('/api/chat/history/:sessionId', (req, res) => {
+  app.get('/api/chat/history/:sessionId', (req: Request, res: Response) => {
     const id = req.params.sessionId;
     res.json({ messages: transcripts.get(id) || [] });
   });
 })();
-  const apiLogWindows = new Map<string, { start: number; count: number; suppressedNoted: boolean }>();
