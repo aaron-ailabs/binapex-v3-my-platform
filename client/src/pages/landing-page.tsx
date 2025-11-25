@@ -110,6 +110,8 @@ export default function LandingPage() {
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [visiblePrices, setVisiblePrices] = useState<Record<string, number>>({});
   const tickerTimerRef = useRef<number | null>(null);
+  const pricesRef = useRef<Record<string, number>>({});
+  const rafRef = useRef<number | null>(null);
 
   const toProxy = (url: string) => `/api/assets/proxy?url=${encodeURIComponent(url)}`;
 
@@ -121,10 +123,6 @@ export default function LandingPage() {
       img.onload = () => setImgReady((prev) => ({ ...prev, [s.image]: true }));
       img.onerror = () => setImgReady((prev) => ({ ...prev, [s.image]: false }));
       img.src = toProxy(s.image);
-      const t = window.setTimeout(() => {
-        setImgReady((prev) => ({ ...prev, [s.image]: prev[s.image] ?? false }));
-      }, 1500);
-      timers.push(t);
     });
     return () => {
       timers.forEach((t) => window.clearTimeout(t));
@@ -138,21 +136,27 @@ export default function LandingPage() {
       try {
         const j = JSON.parse(e.data);
         if (j && j.symbol && typeof j.price === 'number') {
-          setPrices((prev) => ({ ...prev, [j.symbol]: j.price }));
+          pricesRef.current = { ...pricesRef.current, [j.symbol]: j.price };
+          if (rafRef.current == null) {
+            rafRef.current = window.requestAnimationFrame(() => {
+              setVisiblePrices({ ...pricesRef.current });
+              rafRef.current = null;
+            });
+          }
         }
       } catch {}
     };
     esRef.current = es;
-    tickerTimerRef.current = window.setInterval(() => {
-      setVisiblePrices((prev) => ({ ...prices }));
-    }, 5000);
     return () => {
-      if (tickerTimerRef.current) window.clearInterval(tickerTimerRef.current);
+      if (rafRef.current != null) {
+        try { window.cancelAnimationFrame(rafRef.current); } catch {}
+        rafRef.current = null;
+      }
       if (esRef.current) {
         try { esRef.current.close(); } catch {}
       }
     };
-  }, [apiBase, prices]);
+  }, [apiBase]);
 
   // If logged in, we shouldn't really be here typically, but if we are, we show the landing page 
   // with a "Go to Dashboard" button instead of Login.

@@ -22,7 +22,7 @@ app.use(express.json({
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 app.use(securityHeaders);
 app.use((req, res, next) => {
   const isDev = app.get('env') === 'development';

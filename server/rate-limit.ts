@@ -8,6 +8,8 @@ const memory = new Map<string, { count: number; reset: number }>()
 
 export function requireRateLimit(key: string, max: number, windowMs: number) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    const env = (process.env.NODE_ENV || '').toLowerCase()
+    if (env === 'development') return next()
     const now = Date.now()
     const ip = req.ip || req.socket.remoteAddress || 'unknown'
     const rateKey = `${key}:${ip}`

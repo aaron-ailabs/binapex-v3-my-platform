@@ -8,6 +8,7 @@ import { registry } from './metrics';
 import { db } from './db';
 import { wallets as tblWallets, trades as tblTrades } from '@shared/schema';
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
+import Redis from 'ioredis';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -198,21 +199,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/assets', requireAuth, (_req: Request, res: Response) => {
     res.json(Array.from(assets.entries()).map(([symbol, v]) => ({ symbol, ...v })));
   });
+  const toggleSchema = z.object({ symbol: z.string().min(3).max(64), enabled: z.boolean() });
   app.post('/api/assets/toggle', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
-    const { symbol, enabled } = req.body || {};
-    const a = assets.get(String(symbol));
+    const parsed = toggleSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid toggle request' });
+    const { symbol, enabled } = parsed.data;
+    const a = assets.get(symbol);
     if (!a) return res.status(404).json({ message: 'Not found' });
-    a.enabled = !!enabled;
-    assets.set(String(symbol), a);
-    res.json({ symbol, enabled: a.enabled });
+    a.enabled = enabled;
+    assets.set(symbol, a);
+    res.json({ symbol, enabled });
   });
 
+  const redisUrl = process.env.REDIS_URL || '';
+  const redis = redisUrl ? new Redis(redisUrl) : null;
   const engine = { spreadBps: 25, payoutPct: 85 };
-  app.get('/api/engine', requireAuth, (_req: Request, res: Response) => {
+  if (redis) {
+    try { redis.get('engine').then((v) => { if (v) { try { const e = JSON.parse(v); if (typeof e.spreadBps === 'number') engine.spreadBps = e.spreadBps; if (typeof e.payoutPct === 'number') engine.payoutPct = e.payoutPct; } catch {} } }); } catch {}
+  }
+  app.get('/api/engine', requireAuth, async (_req: Request, res: Response) => {
+    if (redis) {
+      try { const v = await redis.get('engine'); if (v) { try { return res.json(JSON.parse(v)); } catch {} } } catch {}
+    }
     res.json(engine);
   });
-  app.post('/api/engine', requireAuth, requireRole(['Admin']), (req: Request, res: Response) => {
-    const { spreadBps, payoutPct } = req.body || {};
+  const engineSchema = z.object({
+    spreadBps: z.number().int().min(0).max(10000).optional(),
+    payoutPct: z.number().min(0).max(100).optional()
+  });
+  app.post('/api/engine', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const parsed = engineSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid engine configuration' });
+    const { spreadBps, payoutPct } = parsed.data;
     if (typeof spreadBps !== 'undefined') {
       engine.spreadBps = Number(spreadBps || engine.spreadBps);
     }
@@ -220,6 +238,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pct = Math.max(0, Math.min(100, Number(payoutPct)));
       engine.payoutPct = Number.isFinite(pct) ? pct : engine.payoutPct;
     }
+    if (redis) { try { await redis.set('engine', JSON.stringify(engine)); } catch {} }
     res.json(engine);
   });
 
@@ -255,19 +274,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/assets/proxy', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const raw = (req.query.url as string) || '';
+      if (!raw) return res.status(400).json({ message: 'Missing url' });
       const parsed = new URL(raw);
-      if (parsed.hostname !== 'images.unsplash.com') {
+      if (parsed.protocol !== 'https:') return res.status(400).json({ message: 'Only https allowed' });
+      const allowedHosts = new Set(['images.unsplash.com', 'source.unsplash.com']);
+      if (!allowedHosts.has(parsed.hostname)) {
         return res.status(400).json({ message: 'Unsupported host' });
       }
-      const r = await fetch(parsed.toString());
-      if (!r.ok) {
-        return res.status(502).json({ message: `Upstream ${r.status}` });
+      const controller = new AbortController();
+      const onAbort = () => { try { controller.abort(); } catch {} };
+      req.on('close', onAbort);
+      const r = await fetch(parsed.toString(), { headers: { 'Accept': 'image/*' }, signal: controller.signal });
+      if (!r.ok || !r.body) {
+        const fallback = Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWP4//8/AwAI/AL+f3q1JwAAAABJRU5ErkJggg==',
+          'base64'
+        );
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Cache-Control', 'no-cache');
+        return res.end(fallback);
       }
       const ct = r.headers.get('content-type') || 'image/jpeg';
       res.setHeader('Content-Type', ct);
       res.setHeader('Cache-Control', 'public, max-age=3600');
-      const buf = Buffer.from(await r.arrayBuffer());
-      res.end(buf);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const nodeStream = (r.body as any).pipe ? r.body : require('stream').Readable.fromWeb(r.body as any);
+      nodeStream.on('error', () => {
+        try { res.destroy(); } catch {}
+      });
+      nodeStream.pipe(res);
     } catch (e) {
       next(e);
     }
@@ -373,17 +408,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(list);
   });
 
+  const tradeSchema = z.object({
+    symbol: z.string().min(3).max(64),
+    asset: z.string().min(2).max(64),
+    amount: z.number().positive(),
+    direction: z.enum(['High','Low']),
+    duration: z.string().regex(/^[1-9][0-9]*[MH]$/).optional()
+  });
   app.post('/api/trades', requireAuth, (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
-    const { symbol, asset, amount, direction, duration } = req.body || {};
+    const parsed = tradeSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid trade request' });
+    const { symbol, asset, amount, direction, duration } = parsed.data;
     let reg = assets.get(String(symbol));
     if (!reg) {
       reg = { name: String(asset || 'Unknown'), market: 'Unknown', enabled: true };
       assets.set(String(symbol), reg);
     }
     if (!reg.enabled) return res.status(403).json({ message: 'Asset disabled' });
-    const amt = Number(amount || 0);
-    if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
+    const amt = Number(amount);
     const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
     const id = Math.random().toString(36).slice(2,9);
     const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: (direction === 'Low' ? 'Low' : 'High') as 'High'|'Low', duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as 'Pending', status: 'Open' as 'Open', createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
@@ -394,10 +437,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId,
         asset: t.asset,
         symbol: t.symbol,
-        amountUsdCents: Math.round(t.amount * 100),
+        amountUsdCents: Math.round(amt * 100),
         direction: t.direction,
         duration: t.duration,
-        entryPrice: Math.round(t.entryPrice * 100),
+        entryPrice: Math.round(base * 100),
         result: t.result,
         status: t.status,
         payoutPct: t.payoutPct ?? engine.payoutPct,
@@ -438,14 +481,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(t);
   });
 
+  const overrideSchema = z.object({
+    tradeId: z.string().min(3).max(32),
+    result: z.enum(['Win','Loss']).optional(),
+    exitPrice: z.number().positive().optional()
+  });
   app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
-    const { tradeId, result, exitPrice } = req.body || {};
+    const parsed = overrideSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid override request' });
+    const { tradeId, result, exitPrice } = parsed.data;
     const t = trades.get(String(tradeId));
     if (!t) return res.status(404).json({ message: 'Not found' });
     const prev = t.settledUsd || 0;
     const exit = typeof exitPrice === 'number' ? Number(exitPrice) : Number((t.entryPrice * (1 + 0.01)).toFixed(2));
     const wentUp = exit >= t.entryPrice;
-    const win = result === 'Win' ? true : result === 'Loss' ? false : (t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp);
+    const win = typeof result !== 'undefined' ? (result === 'Win') : ((t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp));
     const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
     const settled = win ? payout : -t.amount;
     const delta = Number((settled - prev).toFixed(2));
