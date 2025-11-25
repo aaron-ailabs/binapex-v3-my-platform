@@ -25,6 +25,7 @@ import AdminBanks from "@/pages/admin/banks";
 import AdminTrading from "@/pages/admin/trading";
 import AdminAudit from "@/pages/admin/audit";
 import AdminSettings from "@/pages/admin/settings";
+import AdminAllocations from "@/pages/admin/allocations";
 
 import CSDashboard from "@/pages/cs/dashboard";
 import UserLookup from "@/pages/cs/user-lookup";
@@ -115,6 +116,9 @@ function Router() {
       </Route>
       <Route path="/admin/settings">
         <ProtectedRoute component={AdminSettings} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/allocations">
+        <ProtectedRoute component={AdminAllocations} allowedRoles={['Admin']} />
       </Route>
 
       {/* CS Routes */}

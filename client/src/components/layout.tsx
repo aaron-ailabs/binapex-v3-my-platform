@@ -177,7 +177,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       items: [
         { href: '/admin/transactions?type=Deposit', label: 'Deposit Requests', icon: Wallet },
         { href: '/admin/transactions?type=Withdrawal', label: 'Withdrawal Requests', icon: ArrowRightLeft },
-        { href: '/admin/banks', label: 'Bank Accounts', icon: Building2 }
+        { href: '/admin/banks', label: 'Bank Accounts', icon: Building2 },
+        { href: '/admin/allocations', label: 'Fund Allocation', icon: CreditCard }
       ]
     },
     {

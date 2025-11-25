@@ -652,9 +652,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           payoutPct: t.payoutPct ?? engine.payoutPct,
         }).catch(() => {});
       }
+      try { notificationService.send({ userId, type: 'IN_APP', recipient: userId, subject: 'Trade Opened', message: `${t.symbol} ${t.direction} $${t.amount}` }); } catch {}
       if (adminTradeClients.size) {
         const payload = { type: 'trade_open', trade: t };
         adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
+      }
+      const largeThreshold = 5000;
+      if (t.amount >= largeThreshold && adminTradeClients.size) {
+        const payload = { type: 'large_trade', trade: t };
+        adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
+      }
+      const recentMs = 60_000;
+      const recentCount = Array.from(trades.values()).filter(x => x.userId === userId && Date.now() - new Date(x.createdAt).getTime() < recentMs).length;
+      if (recentCount >= 3 && adminTradeClients.size) {
+        const payload = { type: 'suspicious_pattern', userId, pattern: 'burst_trading', count: recentCount };
+        adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
+        try { storage.addSecurityEvent(userId, { type: 'verification', timestamp: new Date(), ipAddress: 'system', status: 'pending', details: 'Suspicious trading pattern: burst_trading' }); } catch {}
       }
       const parseMs = (d: string) => {
         const s = String(d).trim().toUpperCase();
@@ -684,14 +697,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           (w as any).balanceUsd = Number(((w as any).balanceUsd + settled).toFixed(2));
           wallets.set(`${userId}:USD`, w as any);
-          trades.set(id, { ...updated, settledUsd: settled });
-        }
-        try { tradeExecutionDuration.observe(Date.now() - new Date(t.createdAt).getTime()); } catch {}
-        adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'trade_close', details: JSON.stringify({ tradeId: id, result: updated.result, exitPrice: exit, settledUsd: settled }), timestamp: new Date().toISOString() });
-        if (adminTradeClients.size) {
-          const payload = { type: 'trade_close', trade: { ...updated, settledUsd: settled } };
-          adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
-        }
+        trades.set(id, { ...updated, settledUsd: settled });
+      }
+      try { tradeExecutionDuration.observe(Date.now() - new Date(t.createdAt).getTime()); } catch {}
+      try { notificationService.send({ userId, type: 'IN_APP', recipient: userId, subject: 'Trade Settled', message: `${t.symbol} ${updated.result} ${settled >= 0 ? '+' : ''}$${settled}` }); } catch {}
+      adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: 'system', userId, action: 'trade_close', details: JSON.stringify({ tradeId: id, result: updated.result, exitPrice: exit, settledUsd: settled }), timestamp: new Date().toISOString() });
+      if (adminTradeClients.size) {
+        const payload = { type: 'trade_close', trade: { ...updated, settledUsd: settled } };
+        adminTradeClients.forEach((res: any) => { try { res.write(`data: ${JSON.stringify(payload)}\n\n`); } catch {} });
+      }
       }, ms);
       res.json(t);
     });
@@ -936,6 +950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const clients = new Set<any>();
   const adminTradeClients = new Set<any>();
+  const priceAlerts = new Map<string, { userId: string; target: number; direction: 'above'|'below' }[]>();
   const tracked = new Set<string>();
   const cache = new Map<string, number>();
   const computeBase = (s: string) => Math.abs(s.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000 + 100;
@@ -974,6 +989,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const p = cache.has(s) ? cache.get(s)! : computeBase(s);
       const np = Number((p * (1 + (Math.random() * 0.01 - 0.005))).toFixed(2));
       cache.set(s, np);
+      const alerts = priceAlerts.get(s) || [];
+      if (alerts.length) {
+        const remaining: { userId: string; target: number; direction: 'above'|'below' }[] = [];
+        for (const a of alerts) {
+          const hit = a.direction === 'above' ? np >= a.target : np <= a.target;
+          if (hit) {
+            try { notificationService.send({ userId: a.userId, type: 'IN_APP', recipient: a.userId, subject: 'Price Alert', message: `${s} ${a.direction} ${a.target} (${np})` }); } catch {}
+          } else {
+            remaining.push(a);
+          }
+        }
+        priceAlerts.set(s, remaining);
+      }
       clients.forEach((res: any) => {
         try { res.write(`data: ${JSON.stringify({ symbol: s, price: np })}\n\n`); } catch {}
       });
@@ -994,6 +1022,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
       adminTradeClients.delete(res);
       try { res.end(); } catch {}
     });
+  });
+
+  const adminAllocationSchema = z.object({
+    target: z.string().min(3).max(128),
+    amount: z.number().positive(),
+    note: z.string().min(10).max(500),
+    channel: z.enum(['email','sms']).optional(),
+    code: z.string().optional(),
+  });
+  app.post('/api/admin/funds/allocate', requireAuth, requireRole(['Admin']), requireRateLimit('admin-funds-allocate', 10, 3600000), enforceTLS, async (req: Request, res: Response) => {
+    const adminUserId = String(((req as any).user).sub || '');
+    const parsed = adminAllocationSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid allocation request' });
+    const { target, amount, note, channel, code } = parsed.data;
+
+    const targetUser = (await storage.getUserByUsername(target)) || (await storage.getUser(target));
+    if (!targetUser) return res.status(404).json({ message: 'Target user not found' });
+
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ message: 'Invalid amount' });
+
+    const HIGH_VALUE_THRESHOLD = 100000; // $100k
+    if (amt >= HIGH_VALUE_THRESHOLD) {
+      const ch = String(channel || 'email');
+      const key = `${adminUserId}:${ch}`;
+      const v = verificationCodes.get(key);
+      if (!v || v.code !== String(code || '')) {
+        await storage.addSecurityEvent(adminUserId, { type: 'verification', timestamp: new Date(), ipAddress: req.ip || 'unknown', status: 'failed', details: 'Invalid verification code for high-value allocation' });
+        return res.status(401).json({ message: 'Invalid verification code' });
+      }
+      if (Date.now() > v.expiresAt) {
+        verificationCodes.delete(key);
+        await storage.addSecurityEvent(adminUserId, { type: 'verification', timestamp: new Date(), ipAddress: req.ip || 'unknown', status: 'failed', details: 'Verification code expired for high-value allocation' });
+        return res.status(401).json({ message: 'Verification code expired' });
+      }
+    }
+
+    const w = await ensureUsdWallet(targetUser.id);
+    const dec = Math.round(amt * 100);
+    let appliedCents = dec;
+    let status = 'Approved';
+    const MAX_SAFE_CENTS = 2_000_000_000; // safeguard for DB integer
+    if (db && 'balanceUsdCents' in w) {
+      try {
+        const current = Number((w as any).balanceUsdCents || 0);
+        if (current + dec > MAX_SAFE_CENTS) {
+          appliedCents = Math.max(0, MAX_SAFE_CENTS - current);
+          status = 'Partial';
+        }
+        await db.update(tblWallets)
+          .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${appliedCents}` })
+          .where(eq(tblWallets.id, (w as any).id));
+      } catch {
+        return res.status(500).json({ message: 'Allocation failed' });
+      }
+    } else {
+      (w as any).balanceUsd = Number(((w as any).balanceUsd + (appliedCents/100)).toFixed(2));
+      wallets.set(`${targetUser.id}:USD`, w as any);
+    }
+
+    if (db) {
+      try {
+        await db.insert(tblTransactions).values({
+          userId: targetUser.id,
+          type: 'admin_allocation',
+          asset: 'USD',
+          amountUsdCents: appliedCents,
+          walletAddress: null as any,
+          status,
+          createdAt: new Date().toISOString(),
+        });
+      } catch {}
+    }
+
+    adminAudits.push({
+      id: Math.random().toString(36).slice(2,9),
+      adminId: adminUserId,
+      userId: targetUser.id,
+      action: 'admin_allocation',
+      details: JSON.stringify({ target: target, amount: amt, applied: appliedCents/100, status, note }),
+      timestamp: new Date().toISOString()
+    });
+
+    try { await notificationService.send({ userId: targetUser.id, type: 'EMAIL', recipient: targetUser.username, subject: 'Admin Allocation', message: `An administrative allocation of $${(appliedCents/100).toFixed(2)} has been made to your USD wallet. Note: ${note}` }); } catch {}
+    try { await storage.addSecurityEvent(adminUserId, { type: 'verification', timestamp: new Date(), ipAddress: req.ip || 'unknown', status: 'success', details: `Admin allocation: $${amt} to ${targetUser.username} (${status})` }); } catch {}
+
+    const responseWallet = db && 'balanceUsdCents' in w ? { id: (w as any).id, userId: (w as any).userId, assetName: (w as any).assetName, balanceUsd: Number((((w as any).balanceUsdCents)/100).toFixed(2)) } : w;
+    res.json({ ok: true, wallet: responseWallet, status });
+  });
+
+  const priceAlertSchema = z.object({ symbol: z.string().min(3).max(64), target: z.number().positive(), direction: z.enum(['above','below']) });
+  app.post('/api/alerts/price', requireAuth, (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const parsed = priceAlertSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid price alert' });
+    const { symbol, target, direction } = parsed.data;
+    const list = priceAlerts.get(symbol) || [];
+    list.push({ userId, target: Number(target), direction });
+    priceAlerts.set(symbol, list);
+    res.json({ ok: true });
   });
 
   const httpServer = createServer(app);

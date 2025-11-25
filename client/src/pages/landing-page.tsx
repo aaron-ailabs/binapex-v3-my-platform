@@ -111,7 +111,6 @@ export default function LandingPage() {
   const [visiblePrices, setVisiblePrices] = useState<Record<string, number>>({});
   const tickerTimerRef = useRef<number | null>(null);
   const pricesRef = useRef<Record<string, number>>({});
-  const rafRef = useRef<number | null>(null);
 
   const toProxy = (url: string) => `/api/assets/proxy?url=${encodeURIComponent(url)}`;
 
@@ -151,12 +150,6 @@ export default function LandingPage() {
           const j = JSON.parse(e.data);
           if (j && j.symbol && typeof j.price === 'number') {
             pricesRef.current = { ...pricesRef.current, [j.symbol]: j.price };
-            if (rafRef.current == null) {
-              rafRef.current = window.requestAnimationFrame(() => {
-                setVisiblePrices({ ...pricesRef.current });
-                rafRef.current = null;
-              });
-            }
           }
         } catch {}
       };
@@ -201,14 +194,19 @@ export default function LandingPage() {
 
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('online', onOnline);
+    const iv = window.setInterval(() => {
+      const next: Record<string, number> = {};
+      for (const t of HERO_TICKER) {
+        const v = pricesRef.current[t.symbol];
+        if (typeof v === 'number') next[t.symbol] = v;
+      }
+      setVisiblePrices(next);
+    }, 5000);
 
     return () => {
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('online', onOnline);
-      if (rafRef.current != null) {
-        try { window.cancelAnimationFrame(rafRef.current); } catch {}
-        rafRef.current = null;
-      }
+      try { window.clearInterval(iv); } catch {}
       if (timer) { clearTimeout(timer); timer = null; }
       if (esRef.current) {
         try { esRef.current.close(); } catch {}
@@ -371,7 +369,7 @@ export default function LandingPage() {
         <div className="absolute bottom-0 left-0 right-0 z-20">
           <div className="bg-black/60 backdrop-blur-md border-t border-white/10">
             <div className="max-w-7xl mx-auto px-4 py-3 overflow-hidden">
-              <div ref={tickerContainerRef} aria-label="Live market ticker" className="flex gap-8 whitespace-nowrap">
+              <div ref={tickerContainerRef} aria-label="Live market ticker" aria-live="polite" className="flex gap-8 whitespace-nowrap">
                 {HERO_TICKER.map((t) => {
                   const p = visiblePrices[t.symbol];
                   return (
@@ -509,11 +507,18 @@ export default function LandingPage() {
 
       <section className="py-24 bg-black">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex gap-2 mb-6" role="tablist" aria-label="Platform preview views">
+            <Button variant="outline" size="sm" className="rounded-full" onClick={() => setCurrentSlide(0)} aria-selected={currentSlide===0} aria-controls="view-chart">Charts</Button>
+            <Button variant="outline" size="sm" className="rounded-full" onClick={() => setCurrentSlide(1)} aria-selected={currentSlide===1} aria-controls="view-orders">Orders</Button>
+            <Button variant="outline" size="sm" className="rounded-full" onClick={() => setCurrentSlide(2)} aria-selected={currentSlide===2} aria-controls="view-portfolio">Portfolio</Button>
+          </div>
           <div className="grid lg:grid-cols-2 gap-8 items-start">
-            <Suspense fallback={<div className="h-[420px] rounded-lg bg-white/5 border border-white/10" /> }>
-              <TVWidget symbol="BINANCE:BTCUSDT" theme="dark" height={420} />
-            </Suspense>
-            <div className="bg-white/5 p-8 rounded-3xl border border-white/10">
+            <div id="view-chart" className={cn(currentSlide===0 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2', 'transition-all duration-300') }>
+              <Suspense fallback={<div className="h-[420px] rounded-lg bg-white/5 border border-white/10" /> }>
+                <TVWidget symbol="BINANCE:BTCUSDT" theme="dark" height={420} />
+              </Suspense>
+            </div>
+            <div className={cn(currentSlide===1 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2', 'transition-all duration-300 bg-white/5 p-8 rounded-3xl border border-white/10') } id="view-orders">
               <h3 className="text-2xl font-bold mb-6">Order Form (Simulated)</h3>
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
@@ -536,6 +541,17 @@ export default function LandingPage() {
               <div className="mt-6 flex gap-4">
                 <Button className="rounded-full">Simulate Order</Button>
                 <Button variant="outline" className="rounded-full">View Portfolio</Button>
+              </div>
+            </div>
+            <div className={cn(currentSlide===2 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2', 'transition-all duration-300 bg-white/5 p-8 rounded-3xl border border-white/10') } id="view-portfolio">
+              <h3 className="text-2xl font-bold mb-6">Portfolio (Preview)</h3>
+              <div className="grid grid-cols-3 gap-4 text-sm text-gray-300">
+                <div className="col-span-1">BTC/USDT</div>
+                <div className="col-span-1">Qty 0.50</div>
+                <div className="col-span-1">PnL +$230.12</div>
+                <div className="col-span-1">ETH/USDT</div>
+                <div className="col-span-1">Qty 3.00</div>
+                <div className="col-span-1">PnL +$120.55</div>
               </div>
             </div>
           </div>
