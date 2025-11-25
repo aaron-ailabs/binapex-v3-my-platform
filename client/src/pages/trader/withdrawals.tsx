@@ -12,12 +12,14 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Withdrawals() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
   const [asset, setAsset] = useState('BTC');
   const [address, setAddress] = useState('');
+  const [withdrawalPassword, setWithdrawalPassword] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
 
   useEffect(() => {
     if (user) {
@@ -25,25 +27,43 @@ export default function Withdrawals() {
     }
   }, [user]);
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     if (!amount || !address || !user) return;
-    
-    const newTx: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      user_id: user.id,
-      type: 'Withdrawal',
-      asset,
-      amount: Number(amount),
-      status: 'Pending',
-      created_at: new Date().toISOString(),
-      wallet_address: address
-    };
-    
-    db.addTransaction(newTx);
-    setTransactions([newTx, ...transactions]);
-    toast({ title: 'Withdrawal Requested', description: 'Your withdrawal is being processed.' });
-    setAmount('');
-    setAddress('');
+    if (!withdrawalPassword.trim()) {
+      toast({ variant: 'destructive', title: 'Withdrawal Password Required', description: 'Please enter your withdrawal password.' });
+      return;
+    }
+    try {
+      const res = await fetch(`${apiBase}/withdrawals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ amount: Number(amount), note: `asset=${asset};address=${address}`, withdrawalPassword })
+      });
+      if (!res.ok) {
+        let msg = 'Withdrawal failed.';
+        try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
+        toast({ variant: 'destructive', title: 'Withdrawal Error', description: msg });
+        return;
+      }
+      const newTx: Transaction = {
+        id: Math.random().toString(36).substr(2, 9),
+        user_id: user.id,
+        type: 'Withdrawal',
+        asset,
+        amount: Number(amount),
+        status: 'Pending',
+        created_at: new Date().toISOString(),
+        wallet_address: address
+      };
+      db.addTransaction(newTx);
+      setTransactions([newTx, ...transactions]);
+      toast({ title: 'Withdrawal Requested', description: 'Your withdrawal is being processed.' });
+      setAmount('');
+      setAddress('');
+      setWithdrawalPassword('');
+    } catch {
+      toast({ variant: 'destructive', title: 'Network Error', description: 'Please try again.' });
+    }
   };
 
   return (
@@ -92,6 +112,16 @@ export default function Withdrawals() {
                 placeholder="Wallet Address" 
                 value={address} 
                 onChange={(e) => setAddress(e.target.value)} 
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Withdrawal Password</Label>
+              <Input 
+                type="password" 
+                placeholder="Enter your withdrawal password" 
+                value={withdrawalPassword} 
+                onChange={(e) => setWithdrawalPassword(e.target.value)} 
               />
             </div>
 

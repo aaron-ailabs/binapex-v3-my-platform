@@ -7,6 +7,9 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  role: text("role").notNull().default('Trader'),
+  kycStatus: text("kyc_status").notNull().default('Not Started'),
+  membershipTier: text("membership_tier").notNull().default('Silver'),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

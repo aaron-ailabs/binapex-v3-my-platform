@@ -27,6 +27,9 @@ export interface User {
   total_trades?: number;
   deposit_frequency_score?: number;
   trading_frequency_score?: number;
+  phone?: string;
+  bank_account?: { bank_name: string; account_number: string; account_name?: string };
+  ip_address?: string;
 }
 
 export interface Wallet {
@@ -102,6 +105,24 @@ export interface SupportTicket {
   created_at: string;
 }
 
+export interface DepositSettings {
+  currency: 'MYR';
+  bank: {
+    bank_name: string;
+    account_name: string;
+    account_number: string;
+  };
+  ewallet: {
+    provider: string;
+    account_id: string;
+  };
+  qr_code_url?: string;
+}
+
+export interface EngineSettings {
+  spreadBps: number;
+}
+
 // --- Initial Data ---
 
 const MOCK_USERS: User[] = [
@@ -140,6 +161,24 @@ const MOCK_KYC: KYCSubmission[] = [
 const MOCK_TICKETS: SupportTicket[] = [
   { id: '1', user_id: '1', subject: 'Deposit Issue', message: 'My deposit is delayed.', status: 'Open', created_at: new Date().toISOString() },
 ];
+
+const MOCK_DEPOSIT_SETTINGS: DepositSettings = {
+  currency: 'MYR',
+  bank: {
+    bank_name: 'Maybank',
+    account_name: 'BINAPEX SDN BHD',
+    account_number: '1234567890',
+  },
+  ewallet: {
+    provider: 'Touch n Go eWallet',
+    account_id: '012-3456-789',
+  },
+  qr_code_url: 'https://placehold.co/200x200/png?text=QR+Pay',
+};
+
+const MOCK_ENGINE_SETTINGS: EngineSettings = {
+  spreadBps: 25,
+};
 
 class MockDatabase {
   private get<T>(key: string, initial: T): T {
@@ -189,6 +228,10 @@ class MockDatabase {
     const trades = this.getTrades();
     this.set('trades', [trade, ...trades]);
   }
+  updateTrade(trade: Trade) {
+    const trades = this.getTrades().map(t => t.id === trade.id ? trade : t);
+    this.set('trades', trades);
+  }
 
   // Bonuses
   getBonuses() { return this.get<Bonus[]>('bonuses', MOCK_BONUSES); }
@@ -226,6 +269,14 @@ class MockDatabase {
     const list = this.getTickets().map(t => t.id === ticket.id ? ticket : t);
     this.set('tickets', list);
   }
+
+  // Deposit Settings
+  getDepositSettings() { return this.get<DepositSettings>('deposit_settings', MOCK_DEPOSIT_SETTINGS); }
+  updateDepositSettings(settings: DepositSettings) { this.set('deposit_settings', settings); }
+
+  // Engine Settings
+  getEngineSettings() { return this.get<EngineSettings>('engine_settings', MOCK_ENGINE_SETTINGS); }
+  updateEngineSettings(settings: EngineSettings) { this.set('engine_settings', settings); }
   
   // Reset
   reset() {

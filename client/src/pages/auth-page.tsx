@@ -20,6 +20,7 @@ export default function AuthPage() {
   const [regName, setRegName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regPhone, setRegPhone] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -36,7 +37,7 @@ export default function AuthPage() {
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    register(regName, regEmail, regPassword);
+    register(regName, regEmail, regPassword, regPhone);
   };
 
   return (
@@ -129,6 +130,17 @@ export default function AuthPage() {
                     value={regEmail} 
                     onChange={(e) => setRegEmail(e.target.value)}
                     required 
+                    className="bg-background/50"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reg-phone">Phone Number</Label>
+                  <Input 
+                    id="reg-phone" 
+                    type="tel" 
+                    placeholder="012-3456789" 
+                    value={regPhone} 
+                    onChange={(e) => setRegPhone(e.target.value)}
                     className="bg-background/50"
                   />
                 </div>

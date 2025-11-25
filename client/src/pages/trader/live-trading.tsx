@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowUp, ArrowDown, TrendingUp, Activity } from 'lucide-react';
+import { useRef } from 'react';
 
 export default function LiveTrading() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
   const [duration, setDuration] = useState('1M');
@@ -80,8 +81,15 @@ export default function LiveTrading() {
   const [category, setCategory] = useState<'Forex' | 'Stocks' | 'Commodities' | 'Crypto'>('Crypto');
   const [assetName, setAssetName] = useState('Bitcoin');
   const [assetSymbol, setAssetSymbol] = useState('BINANCE:BTCUSDT');
+  const [spreadBps, setSpreadBps] = useState<number>(db.getEngineSettings().spreadBps);
+  const [payoutPct, setPayoutPct] = useState<number>(85);
+  const [price, setPrice] = useState<number | null>(null);
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const esRef = useRef<EventSource | null>(null);
+  const retryRef = useRef<number>(1000);
+  const timerRef = useRef<any>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const list = category === 'Forex' ? forexAssets : category === 'Stocks' ? stockAssets : category === 'Commodities' ? commodityAssets : cryptoAssets;
     if (!list.find(a => a.name === assetName)) {
       setAssetName(list[0].name);
@@ -89,35 +97,89 @@ export default function LiveTrading() {
     }
   }, [category]);
 
-  const handleTrade = (direction: 'High' | 'Low') => {
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const res = await fetch(`${apiBase}/engine`, { headers });
+        if (res.ok) {
+          const d = await res.json();
+          if (typeof d.spreadBps === 'number') setSpreadBps(d.spreadBps);
+          if (typeof d.payoutPct === 'number') setPayoutPct(Math.max(0, Math.min(100, d.payoutPct)));
+        }
+      } catch {}
+    })();
+  }, [apiBase, token]);
+
+  useEffect(() => {
+    setPrice(null);
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
+    (async () => {
+      try {
+        const res = await fetch(`${apiBase}/prices/alpha?symbol=${encodeURIComponent(assetSymbol)}`);
+        if (res.ok) {
+          const d = await res.json();
+          if (typeof d.price === 'number') setPrice(d.price);
+        }
+      } catch {}
+    })();
+    const connect = () => {
+      const url = `${apiBase}/prices/stream?symbols=${encodeURIComponent(assetSymbol)}`;
+      const es = new EventSource(url);
+      esRef.current = es;
+      es.onopen = () => { retryRef.current = 1000; };
+      es.onmessage = (e) => {
+        try {
+          const d = JSON.parse(e.data);
+          if (d && d.symbol === assetSymbol && typeof d.price === 'number') {
+            setPrice(d.price);
+          }
+        } catch {}
+      };
+      es.onerror = () => {
+        try { es.close(); } catch {}
+        const next = Math.min(retryRef.current * 2, 15000);
+        retryRef.current = next;
+        timerRef.current = setTimeout(connect, next);
+      };
+    };
+    connect();
+    return () => {
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
+    };
+  }, [assetSymbol, apiBase]);
+
+  const handleTrade = async (direction: 'High' | 'Low') => {
     if (!amount || isNaN(Number(amount))) {
       toast({ variant: 'destructive', title: 'Invalid Amount', description: 'Please enter a valid trade amount.' });
       return;
     }
     
-    if (!user) return;
-
-    const newTrade = {
-      id: Math.random().toString(36).substr(2, 9),
-      user_id: user.id,
-      asset: assetName,
-      amount: Number(amount),
-      direction: direction,
-      duration: duration,
-      entry_price: Math.random() * 50000 + 20000, // Mock price
-      result: 'Pending',
-      status: 'Open',
-      created_at: new Date().toISOString(),
-    };
-
-    // @ts-ignore - Partial implementation for mock
-    db.addTrade(newTrade);
-    
-    toast({ 
-      title: 'Trade Placed', 
-      description: `${direction} trade for $${amount} on ${asset} opened.`,
-    });
-    setAmount('');
+    if (!user) {
+      toast({ variant: 'destructive', title: 'Login Required', description: 'Please sign in to place trades.' });
+      return;
+    }
+    try {
+      const fallback = Math.abs(assetSymbol.split('').reduce((s,c)=>s + c.charCodeAt(0),0)) % 1000 + 100;
+      const body = { symbol: assetSymbol, asset: assetName, amount: Number(amount), direction, duration, entryPrice: price ?? fallback };
+      const res = await fetch(`${apiBase}/trades`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        let msg = 'Could not place trade.';
+        try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
+        toast({ variant: 'destructive', title: 'Trade Failed', description: msg });
+        return;
+      }
+      toast({ title: 'Trade Placed', description: `${direction} trade for $${amount} on ${assetName} opened.` });
+      setAmount('');
+    } catch {
+      toast({ variant: 'destructive', title: 'Network Error', description: 'Please try again.' });
+    }
   };
 
   const currentList = category === 'Forex' ? forexAssets : category === 'Stocks' ? stockAssets : category === 'Commodities' ? commodityAssets : cryptoAssets;
@@ -184,10 +246,16 @@ export default function LiveTrading() {
               Asset Stats
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+      <CardContent className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Current Price</span>
-              <span className="font-mono font-bold text-xl">$48,291.20</span>
+              <span className="text-muted-foreground">Bid / Ask</span>
+              {(() => {
+                const fallback = Math.abs(assetSymbol.split('').reduce((s,c)=>s + c.charCodeAt(0),0)) % 1000 + 100;
+                const base = price ?? fallback;
+                const bid = base * (1 - (spreadBps/10000)/2);
+                const ask = base * (1 + (spreadBps/10000)/2);
+                return <span className="font-mono font-bold text-xl">${bid.toFixed(2)} / ${ask.toFixed(2)}</span>;
+              })()}
             </div>
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">24h Change</span>
@@ -260,7 +328,7 @@ export default function LiveTrading() {
             </div>
             
             <div className="text-center text-xs text-muted-foreground">
-               Expected Payout: 85%
+               Expected Payout: {payoutPct}%
             </div>
           </CardContent>
         </Card>
