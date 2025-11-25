@@ -2,7 +2,9 @@
 
 export type Role = 'Trader' | 'Customer Service' | 'Admin';
 export type KYCStatus = 'Not Started' | 'Pending' | 'Approved' | 'Rejected';
-export type MembershipTier = 'Bronze' | 'Silver' | 'Gold';
+export type MembershipTier = 'Silver' | 'Gold' | 'Platinum';
+export type BonusStatus = 'pending' | 'active' | 'used' | 'expired';
+export type BonusType = 'manual' | 'promotional' | 'referral';
 export type TransactionType = 'Deposit' | 'Withdrawal' | 'Manual';
 export type TransactionStatus = 'Pending' | 'Approved' | 'Rejected';
 export type TradeDirection = 'High' | 'Low';
@@ -19,6 +21,12 @@ export interface User {
   kyc_status: KYCStatus;
   membership_tier: MembershipTier;
   password?: string; // Mock only
+  credit_score?: number;
+  credit_score_last_updated?: string;
+  total_deposits?: number;
+  total_trades?: number;
+  deposit_frequency_score?: number;
+  trading_frequency_score?: number;
 }
 
 export interface Wallet {
@@ -53,6 +61,27 @@ export interface Trade {
   created_at: string;
 }
 
+export interface Bonus {
+  id: string;
+  user_id: string;
+  amount: number;
+  type: BonusType;
+  status: BonusStatus;
+  assigned_by: string; // admin_id
+  assigned_at: string;
+  expires_at?: string;
+  notes?: string;
+}
+
+export interface AdminActionLog {
+  id: string;
+  admin_id: string;
+  user_id: string;
+  action: 'membership_change' | 'credit_score_adjustment' | 'bonus_allocation';
+  details: string;
+  timestamp: string;
+}
+
 export interface KYCSubmission {
   id: string;
   user_id: string;
@@ -76,10 +105,10 @@ export interface SupportTicket {
 // --- Initial Data ---
 
 const MOCK_USERS: User[] = [
-  { id: '1', email: 'trader@binapex.com', name: 'John Trader', role: 'Trader', kyc_status: 'Approved', membership_tier: 'Gold', password: 'password' },
-  { id: '2', email: 'admin@binapex.com', name: 'Super Admin', role: 'Admin', kyc_status: 'Approved', membership_tier: 'Gold', password: 'password' },
-  { id: '3', email: 'support@binapex.com', name: 'Agent Smith', role: 'Customer Service', kyc_status: 'Approved', membership_tier: 'Silver', password: 'password' },
-  { id: '4', email: 'newbie@binapex.com', name: 'New User', role: 'Trader', kyc_status: 'Not Started', membership_tier: 'Bronze', password: 'password' },
+  { id: '1', email: 'trader@binapex.com', name: 'John Trader', role: 'Trader', kyc_status: 'Approved', membership_tier: 'Gold', password: 'password', credit_score: 680, credit_score_last_updated: new Date().toISOString(), total_deposits: 10000, total_trades: 2, deposit_frequency_score: 30, trading_frequency_score: 20 },
+  { id: '2', email: 'admin@binapex.com', name: 'Super Admin', role: 'Admin', kyc_status: 'Approved', membership_tier: 'Platinum', password: 'password', credit_score: 800, credit_score_last_updated: new Date().toISOString(), total_deposits: 0, total_trades: 0, deposit_frequency_score: 0, trading_frequency_score: 0 },
+  { id: '3', email: 'support@binapex.com', name: 'Agent Smith', role: 'Customer Service', kyc_status: 'Approved', membership_tier: 'Silver', password: 'password', credit_score: 700, credit_score_last_updated: new Date().toISOString(), total_deposits: 0, total_trades: 0, deposit_frequency_score: 0, trading_frequency_score: 0 },
+  { id: '4', email: 'newbie@binapex.com', name: 'New User', role: 'Trader', kyc_status: 'Not Started', membership_tier: 'Silver', password: 'password', credit_score: 500, credit_score_last_updated: new Date().toISOString(), total_deposits: 100, total_trades: 0, deposit_frequency_score: 5, trading_frequency_score: 0 },
 ];
 
 const MOCK_WALLETS: Wallet[] = [
@@ -97,6 +126,12 @@ const MOCK_TRADES: Trade[] = [
   { id: '1', user_id: '1', asset: 'BTC/USD', amount: 500, direction: 'High', duration: '5M', entry_price: 50000, exit_price: 50100, result: 'Win', status: 'Closed', created_at: new Date(Date.now() - 3600000).toISOString() },
   { id: '2', user_id: '1', asset: 'ETH/USD', amount: 200, direction: 'Low', duration: '1M', entry_price: 3000, exit_price: 3010, result: 'Loss', status: 'Closed', created_at: new Date(Date.now() - 1800000).toISOString() },
 ];
+
+const MOCK_BONUSES: Bonus[] = [
+  { id: 'b1', user_id: '1', amount: 100, type: 'manual', status: 'active', assigned_by: '2', assigned_at: new Date().toISOString(), notes: 'Welcome bonus' },
+];
+
+const MOCK_ADMIN_LOGS: AdminActionLog[] = [];
 
 const MOCK_KYC: KYCSubmission[] = [
   { id: '1', user_id: '4', document_type: 'ID', document_image_url: 'https://placehold.co/400x600/png?text=ID+Document', status: 'Pending', created_at: new Date().toISOString() },
@@ -153,6 +188,21 @@ class MockDatabase {
   addTrade(trade: Trade) {
     const trades = this.getTrades();
     this.set('trades', [trade, ...trades]);
+  }
+
+  // Bonuses
+  getBonuses() { return this.get<Bonus[]>('bonuses', MOCK_BONUSES); }
+  getUserBonuses(userId: string) { return this.getBonuses().filter(b => b.user_id === userId); }
+  addBonus(bonus: Bonus) {
+    const list = this.getBonuses();
+    this.set('bonuses', [bonus, ...list]);
+  }
+
+  // Admin Logs
+  getAdminLogs() { return this.get<AdminActionLog[]>('admin_logs', MOCK_ADMIN_LOGS); }
+  addAdminLog(log: AdminActionLog) {
+    const list = this.getAdminLogs();
+    this.set('admin_logs', [log, ...list]);
   }
 
   // KYC

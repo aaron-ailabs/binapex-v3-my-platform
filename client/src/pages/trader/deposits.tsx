@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { toUSD, fmtUSD } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, FileText } from 'lucide-react';
@@ -141,7 +142,7 @@ export default function Deposits() {
                   <TableCell className="font-mono text-xs">{tx.id}</TableCell>
                   <TableCell>{new Date(tx.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>{tx.asset}</TableCell>
-                  <TableCell>{tx.amount}</TableCell>
+                  <TableCell>{fmtUSD(toUSD(tx.asset, tx.amount))}</TableCell>
                   <TableCell>
                     <Badge variant={tx.status === 'Approved' ? 'default' : tx.status === 'Pending' ? 'secondary' : 'destructive'}>
                       {tx.status}

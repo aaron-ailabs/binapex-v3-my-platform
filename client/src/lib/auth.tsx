@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
       role: 'Trader', // Default role
       kyc_status: 'Not Started',
-      membership_tier: 'Bronze'
+      membership_tier: 'Silver'
     };
 
     db.addUser(newUser);

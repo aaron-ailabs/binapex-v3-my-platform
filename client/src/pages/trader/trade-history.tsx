@@ -3,6 +3,7 @@ import { db, Trade } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { fmtUSD } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 
 export default function TradeHistory() {
@@ -49,7 +50,7 @@ export default function TradeHistory() {
                       {trade.direction}
                     </Badge>
                   </TableCell>
-                  <TableCell>${trade.amount}</TableCell>
+                  <TableCell>{fmtUSD(trade.amount)}</TableCell>
                   <TableCell>{trade.duration}</TableCell>
                   <TableCell>{trade.entry_price.toFixed(2)}</TableCell>
                   <TableCell>{trade.exit_price?.toFixed(2) || '-'}</TableCell>

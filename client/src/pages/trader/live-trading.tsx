@@ -15,7 +15,79 @@ export default function LiveTrading() {
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
   const [duration, setDuration] = useState('1M');
-  const [asset, setAsset] = useState('BTC/USD');
+
+  const forexAssets = [ 
+    { name: 'USD/SGD', symbol: 'FX:USDSGD' }, 
+    { name: 'USD/PHP', symbol: 'FX:USDPHP' }, 
+    { name: 'USD/NZD', symbol: 'FX:USDNZD' }, 
+    { name: 'EUR/USD', symbol: 'FX:EURUSD' }, 
+    { name: 'USD/MYR', symbol: 'FX:USDMYR' }, 
+    { name: 'AUD/USD', symbol: 'FX:AUDUSD' }, 
+    { name: 'GBP/USD', symbol: 'FX:GBPUSD' }, 
+    { name: 'USD/JPY', symbol: 'FX:USDJPY' }, 
+    { name: 'USD/THB', symbol: 'FX:USDTHB' }, 
+    { name: 'USD/IDR', symbol: 'FX:USDIDR' }, 
+    { name: 'USD/HKD', symbol: 'FX:USDHKD' }, 
+    { name: 'USD/KRW', symbol: 'FX:USDKRW' }, 
+  ];
+ 
+  const stockAssets = [ 
+    { name: 'KOPI', symbol: 'MYX:KOPI' }, 
+    { name: 'PJBUMI', symbol: 'MYX:PJBUMI' }, 
+    { name: 'MITRA', symbol: 'MYX:MITRA' }, 
+    { name: 'LSH', symbol: 'MYX:LSH' }, 
+    { name: 'CVIEW', symbol: 'MYX:CVIEW' }, 
+    { name: 'GDB Holdings', symbol: 'MYX:GDB' }, 
+    { name: 'NADIBHD', symbol: 'MYX:NADIBHD' }, 
+    { name: 'RAMSSOL', symbol: 'MYX:RAMSSOL' }, 
+    { name: 'HARNLEN', symbol: 'MYX:HARNLEN' }, 
+    { name: 'BNASTRA', symbol: 'MYX:BNASTRA' }, 
+    { name: 'EDGENTA', symbol: 'MYX:EDGENTA' }, 
+    { name: 'KERJAYA', symbol: 'MYX:KERJAYA' }, 
+    { name: 'ECOSHOP', symbol: 'MYX:ECOSHOP' }, 
+  ];
+ 
+  const commodityAssets = [ 
+    { name: 'Gold', symbol: 'COMEX:GC1!' }, 
+    { name: 'Palladium', symbol: 'NYMEX:PA1!' }, 
+    { name: 'Platinum', symbol: 'NYMEX:PL1!' }, 
+    { name: 'Micro Silver', symbol: 'COMEX:SI1!' }, 
+    { name: 'Brent Crude Oil', symbol: 'ICEEUR:BRN1!' }, 
+    { name: 'Crude Oil', symbol: 'NYMEX:CL1!' }, 
+    { name: 'Natural Gas', symbol: 'NYMEX:NG1!' }, 
+    { name: 'RBOB Gasoline', symbol: 'NYMEX:RB1!' }, 
+    { name: 'Heating Oil', symbol: 'NYMEX:HO1!' }, 
+    { name: 'Coffee', symbol: 'ICEUS:KC1!' }, 
+    { name: 'Aluminum', symbol: 'LME:ALI1!' }, 
+    { name: 'Copper', symbol: 'COMEX:HG1!' }, 
+  ];
+ 
+  const cryptoAssets = [ 
+    { name: 'Tether', symbol: 'BINANCE:USDTUSD' }, 
+    { name: 'UniSwap', symbol: 'BINANCE:UNIUSD' }, 
+    { name: 'Bitcoin', symbol: 'BINANCE:BTCUSDT' }, 
+    { name: 'Solana', symbol: 'BINANCE:SOLUSDT' }, 
+    { name: 'Cardano', symbol: 'BINANCE:ADAUSDT' }, 
+    { name: 'Litecoin', symbol: 'BINANCE:LTCUSDT' }, 
+    { name: 'Dogecoin', symbol: 'BINANCE:DOGEUSDT' }, 
+    { name: 'Polygon', symbol: 'BINANCE:MATICUSDT' }, 
+    { name: 'Ethereum', symbol: 'BINANCE:ETHUSDT' }, 
+    { name: 'Chainlink', symbol: 'BINANCE:LINKUSDT' }, 
+    { name: 'Ethereum Classic', symbol: 'BINANCE:ETCUSDT' }, 
+    { name: 'Bitcoin Cash', symbol: 'BINANCE:BCHUSDT' }, 
+  ];
+
+  const [category, setCategory] = useState<'Forex' | 'Stocks' | 'Commodities' | 'Crypto'>('Crypto');
+  const [assetName, setAssetName] = useState('Bitcoin');
+  const [assetSymbol, setAssetSymbol] = useState('BINANCE:BTCUSDT');
+
+  React.useEffect(() => {
+    const list = category === 'Forex' ? forexAssets : category === 'Stocks' ? stockAssets : category === 'Commodities' ? commodityAssets : cryptoAssets;
+    if (!list.find(a => a.name === assetName)) {
+      setAssetName(list[0].name);
+      setAssetSymbol(list[0].symbol);
+    }
+  }, [category]);
 
   const handleTrade = (direction: 'High' | 'Low') => {
     if (!amount || isNaN(Number(amount))) {
@@ -28,7 +100,7 @@ export default function LiveTrading() {
     const newTrade = {
       id: Math.random().toString(36).substr(2, 9),
       user_id: user.id,
-      asset: asset,
+      asset: assetName,
       amount: Number(amount),
       direction: direction,
       duration: duration,
@@ -48,23 +120,54 @@ export default function LiveTrading() {
     setAmount('');
   };
 
+  const currentList = category === 'Forex' ? forexAssets : category === 'Stocks' ? stockAssets : category === 'Commodities' ? commodityAssets : cryptoAssets;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-8rem)]">
       {/* Main Chart Area */}
       <div className="lg:col-span-2 space-y-6">
         <div className="flex items-center justify-between">
            <h1 className="text-3xl font-bold tracking-tight">Live Trading</h1>
-           <div className="flex gap-2">
-              <Button variant={asset === 'BTC/USD' ? 'default' : 'outline'} onClick={() => setAsset('BTC/USD')}>BTC/USD</Button>
-              <Button variant={asset === 'ETH/USD' ? 'default' : 'outline'} onClick={() => setAsset('ETH/USD')}>ETH/USD</Button>
-              <Button variant={asset === 'GC1!' ? 'default' : 'outline'} onClick={() => setAsset('GC1!')}>GOLD</Button>
+           <div className="flex gap-4 items-center">
+             <div className="w-[160px]">
+               <Select value={category} onValueChange={(v) => setCategory(v as any)}>
+                 <SelectTrigger>
+                   <SelectValue placeholder="Market" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="Crypto">Crypto</SelectItem>
+                   <SelectItem value="Forex">Forex</SelectItem>
+                   <SelectItem value="Commodities">Commodities</SelectItem>
+                   <SelectItem value="Stocks">Stocks</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+             <div className="w-[220px]">
+               <Select 
+                 value={assetName} 
+                 onValueChange={(name) => {
+                   setAssetName(name);
+                   const found = currentList.find(a => a.name === name);
+                   if (found) setAssetSymbol(found.symbol);
+                 }}
+               >
+                 <SelectTrigger>
+                   <SelectValue placeholder="Select Asset" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   {currentList.map((a) => (
+                     <SelectItem key={a.symbol} value={a.name}>{a.name}</SelectItem>
+                   ))}
+                 </SelectContent>
+               </Select>
+             </div>
            </div>
         </div>
         
         <Card className="h-[600px] border-primary/20 bg-card/50 backdrop-blur-sm">
           <CardContent className="p-0 h-full">
             <TradingViewWidget 
-                symbol={asset === 'BTC/USD' ? 'COINBASE:BTCUSD' : asset === 'ETH/USD' ? 'COINBASE:ETHUSD' : 'COMEX:GC1!'} 
+                symbol={assetSymbol} 
                 height="100%" 
             />
           </CardContent>
@@ -112,7 +215,7 @@ export default function LiveTrading() {
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <Label>Asset</Label>
-              <Input value={asset} disabled className="font-mono bg-muted/50" />
+              <Input value={assetName} disabled className="font-mono bg-muted/50" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

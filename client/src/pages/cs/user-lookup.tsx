@@ -81,7 +81,22 @@ export default function UserLookup() {
                  </div>
                  <div>
                     <div className="text-sm text-muted-foreground">Tier</div>
-                    <div className="font-bold text-primary">{foundUser.membership_tier}</div>
+                    <div>
+                      <span
+                        className="inline-block px-2 py-1 rounded-full text-xs font-semibold"
+                        style={{
+                          backgroundColor:
+                            foundUser.membership_tier === 'Gold'
+                              ? '#FFD700'
+                              : foundUser.membership_tier === 'Platinum'
+                              ? '#E5E4E2'
+                              : '#C0C0C0',
+                          color: '#000',
+                        }}
+                      >
+                        {foundUser.membership_tier}
+                      </span>
+                    </div>
                  </div>
               </CardContent>
            </Card>

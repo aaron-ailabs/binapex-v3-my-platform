@@ -1,5 +1,5 @@
 import { useAuth } from '@/lib/auth';
-import { db, Trade, Wallet } from '@/lib/mock-data';
+import { db, Trade, Wallet, Bonus } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import TradingViewWidget from '@/components/tradingview-widget';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,11 +11,13 @@ export default function TraderDashboard() {
   const { user } = useAuth();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [bonuses, setBonuses] = useState<Bonus[]>([]);
 
   useEffect(() => {
     if (user) {
       setWallets(db.getUserWallets(user.id));
       setTrades(db.getUserTrades(user.id));
+      setBonuses(db.getUserBonuses(user.id));
     }
   }, [user]);
 
@@ -30,6 +32,24 @@ export default function TraderDashboard() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">Welcome back, {user?.name}</p>
+        {user?.membership_tier && (
+          <div className="mt-1">
+            <span
+              className="inline-block px-3 py-1 rounded-full text-xs font-semibold"
+              style={{
+                backgroundColor:
+                  user.membership_tier === 'Gold'
+                    ? '#FFD700'
+                    : user.membership_tier === 'Platinum'
+                    ? '#E5E4E2'
+                    : '#C0C0C0',
+                color: '#000',
+              }}
+            >
+              {user.membership_tier}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -92,6 +112,37 @@ export default function TraderDashboard() {
                   <TableRow key={wallet.id}>
                     <TableCell className="font-medium">{wallet.asset_name}</TableCell>
                     <TableCell className="text-right">{fmtUSD(toUSD(wallet.asset_name, wallet.balance))}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>My Bonuses</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bonuses.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No bonuses available.</TableCell>
+                  </TableRow>
+                )}
+                {bonuses.map((b) => (
+                  <TableRow key={b.id}>
+                    <TableCell className="font-medium">{b.type}</TableCell>
+                    <TableCell>{fmtUSD(b.amount)}</TableCell>
+                    <TableCell className="text-xs">{b.status}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
