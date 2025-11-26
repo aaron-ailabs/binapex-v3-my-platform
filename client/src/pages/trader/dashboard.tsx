@@ -17,15 +17,7 @@ export default function TraderDashboard() {
   const [creditConfig, setCreditConfig] = useState<{ decimals: number; rounding: 'nearest'|'down'|'up' }>({ decimals: 0, rounding: 'nearest' });
   const [creditUpdatedAt, setCreditUpdatedAt] = useState<number>(Date.now());
   const [syncStatus, setSyncStatus] = useState<'ok'|'updating'|'mismatch'|'error'>('ok');
-<<<<<<< HEAD
   const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
-=======
-<<<<<<< HEAD
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
-=======
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
->>>>>>> 21873c2323019c243e20d6a6b17e3bb6ff36c116
->>>>>>> 929cadfd920a72eb801836e12bd29a24bfe03954
   const { toast } = useToast();
 
   useEffect(() => {

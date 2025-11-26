@@ -56,7 +56,7 @@ import {
 import { cn } from '@/lib/utils';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const [location] = useLocation();
@@ -115,7 +115,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     let mounted = true;
     const init = async () => {
       try {
-        const token = localStorage.getItem('token') || '';
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
         const res = await fetch(`${apiBase}/notifications?unread=1`, { credentials: 'include', headers });
@@ -125,7 +124,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         }
       } catch {}
       try {
-        const token = localStorage.getItem('token') || '';
         const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
         const url = token ? `${apiBase}/notifications/stream?token=${encodeURIComponent(token)}` : `${apiBase}/notifications/stream`;
         es = new EventSource(url, { withCredentials: true } as any);
