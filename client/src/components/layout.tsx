@@ -116,7 +116,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     if (!token) return () => { mounted = false; try { es?.close(); } catch {} };
     const init = async () => {
       try {
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}`, Accept: 'application/json' } : { Accept: 'application/json' };
+        const token = localStorage.getItem('token') || '';
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
         const res = await fetch(`${apiBase}/notifications?unread=1`, { headers });
         if (res.ok) {
