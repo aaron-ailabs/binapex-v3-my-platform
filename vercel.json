@@ -1,22 +1,22 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/index.ts", "use": "@vercel/node" },
-    { "src": "client/index.html", "use": "@vercel/static-build", "config": { "distDir": "client/dist", "buildCommand": "npm run build" } }
+    { "src": "BinapexDark/api/index.ts", "use": "@vercel/node" },
+    { "src": "BinapexDark/client/index.html", "use": "@vercel/static-build", "config": { "distDir": "BinapexDark/client/dist", "buildCommand": "cd BinapexDark && npm ci --prefer-offline && npm run build" } }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.ts" },
-    { "source": "/(.*)", "destination": "/client/dist/index.html" }
+    { "source": "/api/(.*)", "destination": "/BinapexDark/api/index.ts" },
+    { "source": "/(.*)", "destination": "/BinapexDark/client/dist/index.html" }
   ],
   "headers": [
     {
-      "source": "/client/dist/(.*)",
+      "source": "/BinapexDark/client/dist/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
-      "source": "/assets/(.*)",
+      "source": "/BinapexDark/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
