@@ -15,7 +15,11 @@ export default function Security() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<User | null>(null);
+<<<<<<< HEAD
   const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+=======
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+>>>>>>> 21873c2323019c243e20d6a6b17e3bb6ff36c116
   const { token } = useAuth();
   const [withdrawalPassword, setWithdrawalPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');

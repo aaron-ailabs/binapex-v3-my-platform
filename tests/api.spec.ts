@@ -101,6 +101,15 @@ async function run() {
   })
   assert.equal(cfg.ok, true)
 
+<<<<<<< HEAD
+=======
+  const setScore = await json(`${base}/api/admin/credit-score/set`, {
+    method: 'POST', headers: authHeaders, body: JSON.stringify({ userId: '1', score: 735, reason: 'test' })
+  })
+  assert.equal(setScore.ok, true)
+  assert.equal(setScore.body.score, 735)
+
+>>>>>>> 21873c2323019c243e20d6a6b17e3bb6ff36c116
   const loginTrader = await json(`${base}/api/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'trader', password: 'password' })
   })
@@ -108,6 +117,7 @@ async function run() {
   const tToken = String(loginTrader.body.token || '')
   assert.ok(tToken.length > 0)
   const traderHeaders = { Authorization: `Bearer ${tToken}` }
+<<<<<<< HEAD
   const traderId = String(loginTrader.body.userId || '')
   assert.ok(traderId.length > 0)
 
@@ -151,6 +161,12 @@ async function run() {
   } else {
     console.log('audit run start skipped in dev preview')
   }
+=======
+
+  const scoreResp = await json(`${base}/api/credit-score`, { headers: traderHeaders })
+  assert.equal(scoreResp.ok, true)
+  assert.equal(Number(scoreResp.body.score), 735)
+>>>>>>> 21873c2323019c243e20d6a6b17e3bb6ff36c116
 
   process.stdout.write('API tests completed successfully\n')
 }
