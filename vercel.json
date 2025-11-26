@@ -7,19 +7,5 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/BinapexDark/api/index.ts" },
     { "source": "/(.*)", "destination": "/BinapexDark/client/dist/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/BinapexDark/client/dist/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "/BinapexDark/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    }
   ]
 }
