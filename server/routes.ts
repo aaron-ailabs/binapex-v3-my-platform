@@ -372,7 +372,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     name: z.string().min(1).max(120).optional(),
     phone: z.string().min(5).max(32).optional(),
     bank_account: z.object({ bank_name: z.string().min(2).max(120), account_number: z.string().min(2).max(64), account_name: z.string().min(2).max(120).optional() }).optional(),
+<<<<<<< HEAD
     preferences: z.record(z.string(), z.any()).optional(),
+=======
+<<<<<<< HEAD
+    preferences: z.record(z.string(), z.any()).optional(),
+=======
+    preferences: z.record(z.any()).optional(),
+>>>>>>> 21873c2323019c243e20d6a6b17e3bb6ff36c116
+>>>>>>> 929cadfd920a72eb801836e12bd29a24bfe03954
   });
   app.get('/api/profile', requireAuth, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
