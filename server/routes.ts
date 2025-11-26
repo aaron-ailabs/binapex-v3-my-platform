@@ -256,6 +256,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const notificationClients = new Map<string, Set<any>>();
+  app.get('/api/admin/trades/stream', requireAuth, requireRole(['Admin']), async (_req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    try { (res as any).flushHeaders?.(); } catch {}
+    try { res.write(':ok\n\n'); } catch {}
+    adminTradeClients.add(res as any);
+    res.write(`data: ${JSON.stringify({ type: 'snapshot', data: [] })}\n\n`);
+    _req.on('close', () => {
+      adminTradeClients.delete(res as any);
+      try { res.end(); } catch {}
+    });
+  });
   app.get('/api/notifications/stream', requireAuthToken, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
     res.setHeader('Content-Type', 'text/event-stream');

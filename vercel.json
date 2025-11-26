@@ -1,6 +1,25 @@
 {
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "http://localhost:5000/api/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "version": 2,
+  "builds": [
+    { "src": "server/index.ts", "use": "@vercel/node" },
+    { "src": "client/index.html", "use": "@vercel/static-build", "config": { "distDir": "client/dist", "buildCommand": "npm run build" } }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/server/index.ts" },
+    { "src": "/(.*)", "dest": "/client/dist/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/client/dist/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
   ]
 }

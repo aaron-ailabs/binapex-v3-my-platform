@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, getPresence, registerPresenceRoutes } from "./routes";
 import { WebSocketServer } from "ws";
+import { Counter } from "prom-client";
+import { nanoid } from "nanoid";
 import type { WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { securityHeaders } from './security'
@@ -25,7 +27,7 @@ function serveStatic(app: express.Express) {
   if (!fs.existsSync(distPath)) {
     throw new Error(`Could not find the build directory: ${distPath}, make sure to build the client first`)
   }
-  app.use(express.static(distPath))
+  app.use(express.static(distPath, { maxAge: '7d', etag: true }))
   app.use((_req, res) => {
     res.sendFile(path.resolve(distPath, 'index.html'))
   })
@@ -58,6 +60,8 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
+  const trace = (req.headers['x-trace-id'] as string) || nanoid(12)
+  res.setHeader('x-trace-id', trace)
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
@@ -75,6 +79,7 @@ app.use((req, res, next) => {
       try { httpDuration.observe({ method: req.method, route: path, status: String(res.statusCode) }, duration); } catch {}
     }
     if (path.startsWith("/api")) {
+      if ((path.startsWith('/api/notifications')) && res.statusCode === 401) return;
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
@@ -107,6 +112,7 @@ app.use((req, res, next) => {
   next();
 });
 
+const isVercel = !!process.env.VERCEL;
 (async () => {
   const server = await registerRoutes(app);
 
@@ -118,7 +124,8 @@ app.use((req, res, next) => {
     }
   }
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const httpErrors = new Counter({ name: 'http_errors_total', help: 'HTTP errors', labelNames: ['route','severity','status'] });
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
@@ -127,6 +134,10 @@ app.use((req, res, next) => {
     if (process.env.NODE_ENV !== 'test') {
       console.error(err);
     }
+    try {
+      const sev = status >= 500 ? 'critical' : status >= 400 ? 'warning' : 'info'
+      httpErrors.inc({ route: req.path || 'unknown', severity: sev, status: String(status) })
+    } catch {}
   });
 
   // Prevent server crash on unhandled rejections
@@ -142,27 +153,29 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  if (!isVercel && app.get("env") === "development") {
     const { setupVite } = await import('./vite')
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    if (!isVercel) serveStatic(app);
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  if (!isVercel) {
+    const port = parseInt(process.env.PORT || '5000', 10);
+    server.listen({
+      port,
+      host: "0.0.0.0",
+    }, () => {
+      log(`serving on port ${port}`);
+    });
+  }
 
   // WebSocket Chat Server
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = !isVercel ? new WebSocketServer({ server, path: "/ws", perMessageDeflate: { zlibDeflateOptions: { level: 6, memLevel: 3 }, zlibInflateOptions: { chunkSize: 16 * 1024 } } }) : undefined as any;
 
   type Sender = "trader" | "agent" | "ai";
   type ChatMessage = {
@@ -200,7 +213,7 @@ app.use((req, res, next) => {
         ws.send(JSON.stringify({ type: "message", data: payload }));
       } catch {}
     });
-  }
+}
 
   function aiRespond(sessionId: string, userText?: string) {
     const lower = (userText || "").toLowerCase();
@@ -224,6 +237,7 @@ app.use((req, res, next) => {
     broadcast(sessionId, msg);
   }
 
+  if (!isVercel)
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || "", `http://${req.headers.host}`);
     const sessionId = url.searchParams.get("sessionId") || "default";
@@ -270,3 +284,5 @@ app.use((req, res, next) => {
     res.json({ messages: transcripts.get(id) || [] });
   });
 })();
+
+export default app;

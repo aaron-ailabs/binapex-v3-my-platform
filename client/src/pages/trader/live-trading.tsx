@@ -193,6 +193,7 @@ export default function LiveTrading() {
         return;
       }
       toast({ title: 'Trade Placed', description: `${direction} trade for $${amount} on ${assetName} opened.` });
+      try { if (navigator.vibrate) navigator.vibrate(30); } catch {}
       setAmount('');
     } catch {
       toast({ variant: 'destructive', title: 'Network Error', description: 'Please try again.' });

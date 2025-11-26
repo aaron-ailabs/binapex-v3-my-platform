@@ -54,7 +54,7 @@ export default function TransactionOversight() {
         return;
       }
       const data = await res.json();
-      const url = data.url as string;
+      const url = `${apiBase.replace(/\/$/, '')}/chat/file/${String(data.id || '').trim()}`;
       const next = { ...settings, qr_code_url: url } as DepositSettings;
       setSettings(next);
       db.updateDepositSettings(next);

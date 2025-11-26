@@ -61,6 +61,20 @@ export default function TraderDashboard() {
     }
   }, [user]);
 
+  const fmtScore = (v: number) => {
+    const d = Math.max(0, Math.min(4, Number(creditConfig.decimals || 0)))
+    const r = String(creditConfig.rounding || 'nearest')
+    const m = Math.pow(10, d)
+    const rounded = r === 'down' ? Math.floor(v * m) / m : r === 'up' ? Math.ceil(v * m) / m : Math.round(v * m) / m
+    return rounded.toFixed(d)
+  }
+  const scoreColor = () => {
+    const s = Number(creditScore || 0)
+    if (s >= 700) return 'text-emerald-500'
+    if (s >= 500) return 'text-yellow-500'
+    return 'text-rose-500'
+  }
+
   const totalBalance = wallets.reduce((sum, w) => sum + toUSD(w.asset_name, w.balance), 0);
 
   const totalPayouts = trades
@@ -91,6 +105,21 @@ export default function TraderDashboard() {
           </div>
         )}
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Credit Score</CardTitle>
+          <span className="text-xs text-muted-foreground">{syncStatus === 'updating' ? 'Updating…' : syncStatus === 'mismatch' ? 'Checking…' : 'Synced'}</span>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-baseline gap-3">
+            <div className={`text-4xl font-bold ${scoreColor()}`}>{fmtScore(creditScore)}</div>
+            <div className="text-sm text-muted-foreground">{creditScore >= 700 ? 'Good' : creditScore >= 500 ? 'Fair' : 'Needs Improvement'}</div>
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">Last updated: {new Date(creditUpdatedAt).toLocaleString()}</div>
+          <div className="mt-4 text-sm text-muted-foreground">Display uses admin-configured decimals ({creditConfig.decimals}) and rounding ({creditConfig.rounding}).</div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-gradient-to-br from-primary/20 to-card border-primary/20">

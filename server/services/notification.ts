@@ -13,14 +13,12 @@ export interface NotificationPayload {
 
 export class NotificationService {
   async send(payload: NotificationPayload): Promise<boolean> {
-    // In a real app, we would switch on payload.type and call external APIs.
-    // For now, we log to console to simulate sending.
-
-    console.log(`[NOTIFICATION SERVICE] Sending ${payload.type} to ${payload.recipient}`);
-    if (payload.subject) {
-      console.log(`[NOTIFICATION SERVICE] Subject: ${payload.subject}`);
+    const env = (process.env.NODE_ENV || '').toLowerCase();
+    if (env === 'development' && process.env.NOTIFY_DEBUG === '1') {
+      const subj = payload.subject ? ` ${payload.subject}` : '';
+      const msg = payload.message.length > 120 ? payload.message.slice(0, 117) + '…' : payload.message;
+      console.log(`[NOTIFICATION] ${payload.type} ${payload.recipient}:${subj} :: ${msg}`);
     }
-    console.log(`[NOTIFICATION SERVICE] Message: ${payload.message}`);
 
     // Simulate API latency
     await new Promise(resolve => setTimeout(resolve, 100));

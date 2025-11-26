@@ -113,11 +113,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let es: EventSource | null = null;
     let mounted = true;
+    if (!token) return () => { mounted = false; try { es?.close(); } catch {} };
     const init = async () => {
       try {
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}`, Accept: 'application/json' } : { Accept: 'application/json' };
         const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
-        const res = await fetch(`${apiBase}/notifications?unread=1`, { credentials: 'include', headers });
+        const res = await fetch(`${apiBase}/notifications?unread=1`, { headers });
         if (res.ok) {
           const list = await res.json();
           if (mounted) setUnreadCount(Array.isArray(list) ? list.length : 0);
@@ -125,8 +126,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       } catch {}
       try {
         const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
-        const url = token ? `${apiBase}/notifications/stream?token=${encodeURIComponent(token)}` : `${apiBase}/notifications/stream`;
-        es = new EventSource(url, { withCredentials: true } as any);
+        const url = `${apiBase}/notifications/stream?token=${encodeURIComponent(token)}`;
+        es = new EventSource(url);
         es.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data || '{}');
@@ -140,7 +141,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       mounted = false;
       try { es?.close(); } catch {}
     };
-  }, [user]);
+  }, [user, token]);
 
   // Format breadcrumbs
   const pathSegments = location.split('/').filter(Boolean);

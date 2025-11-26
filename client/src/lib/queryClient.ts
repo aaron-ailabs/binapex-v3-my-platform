@@ -11,12 +11,16 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  extraHeaders?: Record<string, string>,
 ): Promise<Response> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (data) headers["Content-Type"] = "application/json";
+  if (extraHeaders) Object.assign(headers, extraHeaders);
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
   });
 
   await throwIfResNotOk(res);
@@ -29,9 +33,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
-      credentials: "include",
-    });
+    const res = await fetch(queryKey.join("/") as string, { headers: { Accept: "application/json" } });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;

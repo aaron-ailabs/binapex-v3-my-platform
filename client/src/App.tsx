@@ -29,6 +29,7 @@ import Markets from "@/pages/marketing/markets";
 import Products from "@/pages/marketing/products";
 import Institutional from "@/pages/marketing/institutional";
 import AdminAllocations from "@/pages/admin/allocations";
+import ProfilePage from "@/pages/profile";
 
 import CSDashboard from "@/pages/cs/dashboard";
 import UserLookup from "@/pages/cs/user-lookup";
@@ -85,6 +86,9 @@ function Router() {
       </Route>
       <Route path="/security">
         <ProtectedRoute component={Security} allowedRoles={['Trader']} />
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute component={ProfilePage} />
       </Route>
       <Route path="/support">
         <ProtectedRoute component={Support} allowedRoles={['Trader']} />

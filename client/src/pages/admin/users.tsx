@@ -113,22 +113,23 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between sm:flex-row sm:items-center sm:justify-between flex-col gap-3 stack-sm">
         <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-        <div className="relative w-64">
+        <div className="relative w-full sm:w-64">
            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
            <Input 
              placeholder="Search users..." 
-             className="pl-8" 
+             className="pl-8 h-12" 
+             aria-label="Search users" 
              value={search}
              onChange={e => setSearch(e.target.value)}
            />
         </div>
       </div>
 
-      <Card>
+      <Card className="mobile-container">
         <CardContent className="p-0">
-          <Table>
+          <Table className="sm:text-sm text-xs sm:table-auto table-fixed mobile-table">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -142,8 +143,8 @@ export default function UserManagement() {
             <TableBody>
               {filteredUsers.map((user) => (
                 <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.name}</TableCell>
-                  <TableCell>{user.email}</TableCell>
+                  <TableCell className="font-medium text-wrap">{user.name}</TableCell>
+                  <TableCell className="text-wrap max-w-[180px] sm:max-w-none">{user.email}</TableCell>
                   <TableCell>{user.role}</TableCell>
                   <TableCell>
                      <Badge variant={user.kyc_status === 'Approved' ? 'default' : 'outline'}>
@@ -154,7 +155,7 @@ export default function UserManagement() {
                   <TableCell className="text-right">
                     <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={() => setSelectedUser(user)}>
+                        <Button variant="ghost" size="icon" className="h-12 w-12" onClick={() => setSelectedUser(user)} aria-label={`Edit ${user.name}`}>
                           <Edit className="h-4 w-4" />
                         </Button>
                       </DialogTrigger>

@@ -116,11 +116,11 @@ async function run() {
   const traderId = String(loginTrader.body.userId || '')
   assert.ok(traderId.length > 0)
 
-  const setScore = await json(`${base}/api/admin/credit-score/set`, {
+  const setScore2 = await json(`${base}/api/admin/credit-score/set`, {
     method: 'POST', headers: authHeaders, body: JSON.stringify({ userId: traderId, score: 735, reason: 'test' })
   })
-  assert.equal(setScore.ok, true)
-  console.log('setScore body:', setScore.body)
+  assert.equal(setScore2.ok, true)
+  console.log('setScore body:', setScore2.body)
 
   const scoreResp = await json(`${base}/api/credit-score`, { headers: traderHeaders })
   assert.equal(scoreResp.ok, true)
@@ -158,6 +158,45 @@ async function run() {
   }
 
   process.stdout.write('API tests completed successfully\n')
+
+  const cfgSet = await json(`${base}/api/admin/credit-score/config`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ decimals: 2, rounding: 'down' }) })
+  assert.equal(cfgSet.ok, true)
+  const traderScore = await json(`${base}/api/credit-score`, { headers: traderHeaders })
+  assert.equal(traderScore.ok, true)
+  assert.equal(typeof traderScore.body.score, 'number')
+  assert.equal(Number(traderScore.body.config.decimals), 2)
+  assert.equal(String(traderScore.body.config.rounding), 'down')
+
+  // Profile requires auth
+  const unauthProfile = await json(`${base}/api/profile`)
+  assert.equal(unauthProfile.status, 401)
+
+  // Profile fetch with trader token
+  const traderProfile = await json(`${base}/api/profile`, { headers: traderHeaders })
+  assert.equal(traderProfile.ok, true)
+  assert.equal(String(traderProfile.body.id || '').length > 0, true)
+
+  // Invalid profile update (short phone)
+  const badProfile = await json(`${base}/api/profile`, {
+    method: 'POST', headers: { ...traderHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Test', phone: '123' })
+  })
+  assert.equal(badProfile.status, 400)
+
+  // Valid profile update
+  const goodProfile = await json(`${base}/api/profile`, {
+    method: 'POST', headers: { ...traderHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Trader One', phone: '1234567890', preferences: { alerts: true } })
+  })
+  assert.equal(goodProfile.ok, true)
+
+  // Avatar invalid data
+  const badAvatar = await json(`${base}/api/profile/avatar`, {
+    method: 'POST', headers: { ...traderHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl: 'not-a-data-url' })
+  })
+  assert.equal(badAvatar.status, 400)
+
+  // Notifications stream requires token
+  const notifNoToken = await fetch(`${base}/api/notifications/stream`)
+  assert.equal(notifNoToken.status, 401)
 }
 
 run().catch((e) => { console.error(e); process.exit(1) })
