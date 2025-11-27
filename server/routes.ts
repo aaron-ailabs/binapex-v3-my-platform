@@ -600,6 +600,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const s = String((req.query as any).symbol || '').trim();
       if (!s) return res.status(400).json({ message: 'Missing symbol' });
+      // Synthetic price fallback: Generates a deterministic price based on symbol char codes.
+      // This ensures the trading engine works in demo environments without a valid AlphaVantage API key.
       if (!ALPHA_KEY) {
         const synthetic = Math.abs(s.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000 + 100;
         return res.json({ symbol: s, price: synthetic, source: 'synthetic' });
