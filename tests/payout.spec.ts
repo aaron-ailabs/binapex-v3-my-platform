@@ -40,6 +40,20 @@ async function run() {
   assert.equal(override.body.payoutPct, 72)
   assert.equal(Number(override.body.settledUsd || 0), 172)
 
+  const bulk = await json(`${base}/api/admin/users/payout/bulk`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: [{ userId: tUserId, payoutPct: 55, reason: 'bulk test' }] }) })
+  assert.equal(bulk.ok, true)
+
+  const place2 = await json(`${base}/api/trades`, { method: 'POST', headers: { Authorization: `Bearer ${tToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BINANCE:BTCUSDT', asset: 'Crypto', amount: 100, direction: 'High', duration: '1M', entryPrice: 50000 }) })
+  assert.equal(place2.ok, true)
+  const tradeId2 = String(place2.body.id || '')
+  assert.ok(tradeId2.length > 0)
+  assert.equal(place2.body.payoutPct, 55)
+
+  const override2 = await json(`${base}/api/admin/trades/override`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ tradeId: tradeId2, result: 'Win' }) })
+  assert.equal(override2.ok, true)
+  assert.equal(override2.body.payoutPct, 55)
+  assert.equal(Number(override2.body.settledUsd || 0), 155)
+
   process.stdout.write('Payout tests completed successfully\n')
 }
 

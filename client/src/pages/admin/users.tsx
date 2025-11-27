@@ -29,6 +29,15 @@ export default function UserManagement() {
   const [overrideScore, setOverrideScore] = useState<number>(0);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
+  const [traderQuery, setTraderQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [editPct, setEditPct] = useState<Record<string, number>>({});
+  const [bulkPct, setBulkPct] = useState<string>('');
+  const [bulkReason, setBulkReason] = useState<string>('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<{ ids: string[]; pct?: number } | null>(null);
+  const [simAmount, setSimAmount] = useState<string>('');
+  const [simPct, setSimPct] = useState<number>(85);
   
 
   useEffect(() => {
@@ -45,9 +54,10 @@ export default function UserManagement() {
     }
     setWalletsLoading(true);
     try { setWallets(db.getUserWallets(selectedUser.id)); } finally { setWalletsLoading(false); }
+    const pollMs = window.matchMedia('(max-width: 640px)').matches ? 4000 : 2000;
     const id = window.setInterval(() => {
       try { setWallets(db.getUserWallets(selectedUser.id)); } catch {}
-    }, 2000);
+    }, pollMs);
     return () => { window.clearInterval(id); };
   }, [selectedUser]);
 
@@ -55,6 +65,69 @@ export default function UserManagement() {
     u.name.toLowerCase().includes(search.toLowerCase()) || 
     u.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  const traders = users.filter(u => String(u.role) === 'Trader');
+  const filteredTraders = traders.filter(u => 
+    u.name.toLowerCase().includes(traderQuery.toLowerCase()) ||
+    u.email.toLowerCase().includes(traderQuery.toLowerCase())
+  );
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const saveSinglePct = async (userId: string) => {
+    if (!token) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'Admin token required.' }); return; }
+    const u = users.find(x => x.id === userId);
+    if (!u) return;
+    const current = Math.max(0, Math.min(100, Number(u.payout_percentage ?? 0)));
+    const pct = Math.round(Math.max(0, Math.min(100, Number(editPct[userId] ?? current))));
+    try {
+      const r = await fetch(`${apiBase}/admin/users/payout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ userId, payoutPct: pct, reason: overrideReason || 'admin_update' }) });
+      if (!r.ok) { toast({ variant: 'destructive', title: 'Save failed', description: `${r.status}` }); return; }
+      const data = await r.json().catch(() => null);
+      const val = typeof data?.payoutPct === 'number' ? Number(data.payoutPct) : pct;
+      setUsers(prev => prev.map(x => x.id === userId ? { ...x, payout_percentage: val } as any : x));
+      toast({ title: 'Payout Updated', description: `${Math.round(val)}% for ${u.email}` });
+    } catch {
+      toast({ variant: 'destructive', title: 'Network error' });
+    }
+  };
+
+  const openConfirmBulk = () => {
+    const ids = selectedIds.slice();
+    if (!ids.length) { toast({ variant: 'destructive', title: 'No traders selected' }); return; }
+    const pct = bulkPct ? Math.round(Math.max(0, Math.min(100, Number(bulkPct)))) : undefined;
+    setConfirmTarget({ ids, pct });
+    setConfirmOpen(true);
+  };
+
+  const applyBulk = async () => {
+    if (!token || !confirmTarget) return;
+    const items = confirmTarget.ids.map(id => {
+      const u = users.find(x => x.id === id);
+      const current = Math.max(0, Math.min(100, Number(u?.payout_percentage ?? 0)));
+      const next = typeof confirmTarget.pct === 'number' ? confirmTarget.pct : Math.round(Math.max(0, Math.min(100, Number(editPct[id] ?? current))));
+      return { userId: id, payoutPct: next, reason: bulkReason || 'bulk_update' };
+    });
+    try {
+      const r = await fetch(`${apiBase}/admin/users/payout/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ items }) });
+      if (!r.ok) { toast({ variant: 'destructive', title: 'Bulk failed', description: `${r.status}` }); return; }
+      const d = await r.json().catch(() => null);
+      const results = Array.isArray(d?.results) ? d.results : [];
+      setUsers(prev => prev.map(x => {
+        const m = results.find((r: any) => r.userId === x.id && r.ok);
+        return m ? { ...x, payout_percentage: Number(m.payoutPct) } as any : x;
+      }));
+      setConfirmOpen(false);
+      setSelectedIds([]);
+      setBulkPct('');
+      setBulkReason('');
+      toast({ title: 'Bulk Update Applied', description: `${results.filter((r: any) => r.ok).length} updated` });
+    } catch {
+      toast({ variant: 'destructive', title: 'Network error' });
+    }
+  };
 
   const handleUpdateUser = (e: FormEvent) => {
     e.preventDefault();
@@ -152,6 +225,95 @@ export default function UserManagement() {
 
       <Card className="mobile-container">
         <CardContent className="p-0">
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="font-semibold">Trader Profit Percentage Control</div>
+              <div className="text-xs text-muted-foreground">Admin-only</div>
+            </div>
+            <div className="text-xs text-muted-foreground">Return = stake + stake × percentage ÷ 100. Example: $200 at 18% → $236.</div>
+            <div className="grid sm:grid-cols-3 gap-3 items-end">
+              <div className="sm:col-span-2">
+                <Label>Search Traders</Label>
+                <Input placeholder="Search by name or email" value={traderQuery} onChange={e => setTraderQuery(e.target.value)} />
+              </div>
+              <div>
+                <Label>Bulk Percentage</Label>
+                <Input inputMode="numeric" pattern="[0-9]*" placeholder="%" value={bulkPct} onChange={e => setBulkPct(e.target.value)} />
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3 items-end">
+              <div className="sm:col-span-2">
+                <Label>Reason</Label>
+                <Input placeholder="Optional" value={bulkReason} onChange={e => setBulkReason(e.target.value)} />
+              </div>
+              <div>
+                <Button type="button" onClick={openConfirmBulk}>Apply to Selected</Button>
+              </div>
+            </div>
+            <Table className="sm:text-sm text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10">Select</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Current %</TableHead>
+                  <TableHead>New %</TableHead>
+                  <TableHead>Δ</TableHead>
+                  <TableHead className="text-right">Save</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredTraders.map(u => {
+                  const current = Math.max(0, Math.min(100, Number(u.payout_percentage ?? 0)));
+                  const next = Math.max(0, Math.min(100, Number(editPct[u.id] ?? current)));
+                  const delta = Math.round(next - current);
+                  return (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <input aria-label={`Select ${u.email}`} type="checkbox" checked={selectedIds.includes(u.id)} onChange={() => toggleSelect(u.id)} />
+                      </TableCell>
+                      <TableCell className="font-medium text-wrap">{u.name}</TableCell>
+                      <TableCell className="text-wrap max-w-[180px] sm:max-w-none">{u.email}</TableCell>
+                      <TableCell>{current}%</TableCell>
+                      <TableCell>
+                        <Input aria-label="New percentage" inputMode="numeric" pattern="[0-9]*" placeholder="%" value={String(next)} onChange={e => setEditPct(p => ({ ...p, [u.id]: Math.max(0, Math.min(100, Number(e.target.value || 0))) }))} />
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={delta >= 0 ? 'default' : 'outline'}>{delta >= 0 ? `+${delta}%` : `${delta}%`}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Dialog open={confirmOpen && !!confirmTarget && confirmTarget.ids.length === 1 && confirmTarget.ids[0] === u.id} onOpenChange={(open) => setConfirmOpen(open)}>
+                          <DialogTrigger asChild>
+                            <Button type="button" variant="outline" onClick={() => { setConfirmTarget({ ids: [u.id], pct: Math.round(next) }); setConfirmOpen(true); }}>Save</Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Confirm Update</DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-2 text-sm">
+                              <div>{u.email}</div>
+                              <div>Set percentage to {Math.round(next)}%</div>
+                              <div className="grid grid-cols-3 gap-3 items-end">
+                                <Input placeholder="Amount" inputMode="numeric" value={simAmount} onChange={e => setSimAmount(e.target.value)} />
+                                <Input placeholder="%" inputMode="numeric" value={String(simPct)} onChange={e => setSimPct(Math.max(0, Math.min(100, Number(e.target.value || 0))))} />
+                                <div className="text-xs text-muted-foreground">
+                                  {(() => { const a = Number(simAmount || 0); const p = Math.round(simPct); const profit = Math.round((a * p) / 100); const ret = a + profit; return a > 0 ? `Profit ${profit}, Return ${ret}` : 'Enter amount to simulate'; })()}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+                              <Button type="button" onClick={async () => { setConfirmOpen(false); await saveSinglePct(u.id); }}>Confirm</Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
           <Table className="sm:text-sm text-xs sm:table-auto table-fixed mobile-table">
             <TableHeader>
               <TableRow>
@@ -197,18 +359,18 @@ export default function UserManagement() {
                         </TooltipProvider>
                       </DialogTrigger>
                       {selectedUser && selectedUser.id === user.id && (
-                        <DialogContent>
+                        <DialogContent className="sm:max-w-2xl w-[96vw] sm:w-auto max-h-[85vh] overflow-y-auto rounded-none sm:rounded-lg p-0">
                           <DialogHeader>
                             <DialogTitle>Edit User: {user.name}</DialogTitle>
                           </DialogHeader>
-                          <form onSubmit={handleUpdateUser} className="space-y-6 py-4">
+                          <form onSubmit={handleUpdateUser} className="space-y-6 p-4 sm:p-6">
                              <div className="space-y-2">
                                 <Label>Role</Label>
                                 <Select 
                                   value={selectedUser.role} 
                                   onValueChange={(val: Role) => setSelectedUser({...selectedUser, role: val})}
                                 >
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="Trader">Trader</SelectItem>
                                     <SelectItem value="Admin">Admin</SelectItem>
@@ -222,7 +384,7 @@ export default function UserManagement() {
                                   value={selectedUser.kyc_status} 
                                   onValueChange={(val: KYCStatus) => setSelectedUser({...selectedUser, kyc_status: val})}
                                 >
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="Not Started">Not Started</SelectItem>
                                     <SelectItem value="Pending">Pending</SelectItem>
@@ -237,7 +399,7 @@ export default function UserManagement() {
                                   value={selectedUser.membership_tier} 
                                   onValueChange={(val: MembershipTier) => setSelectedUser({...selectedUser, membership_tier: val})}
                                 >
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectTrigger className="h-12"><SelectValue /></SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="Silver">Silver</SelectItem>
                                     <SelectItem value="Gold">Gold</SelectItem>
@@ -245,18 +407,18 @@ export default function UserManagement() {
                                   </SelectContent>
                                 </Select>
                              </div>
-                             <div className="grid grid-cols-2 gap-4">
+                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                <div className="space-y-2">
-                                 <Label>Phone</Label>
-                                 <Input value={selectedUser.phone || ''} onChange={(e) => setSelectedUser({ ...selectedUser, phone: e.target.value })} />
+                                  <Label>Phone</Label>
+                                  <Input className="h-12 touch-manipulation" value={selectedUser.phone || ''} onChange={(e) => setSelectedUser({ ...selectedUser, phone: e.target.value })} />
                                </div>
                                <div className="space-y-2">
-                                 <Label>Bank Name</Label>
-                                 <Input value={selectedUser.bank_account?.bank_name || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), bank_name: e.target.value } })} />
+                                  <Label>Bank Name</Label>
+                                  <Input className="h-12 touch-manipulation" value={selectedUser.bank_account?.bank_name || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), bank_name: e.target.value } })} />
                                </div>
-                               <div className="space-y-2 col-span-2">
-                                 <Label>Bank Account Number</Label>
-                                 <Input value={selectedUser.bank_account?.account_number || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), account_number: e.target.value } })} />
+                               <div className="space-y-2 sm:col-span-2">
+                                  <Label>Bank Account Number</Label>
+                                  <Input className="h-12 touch-manipulation" value={selectedUser.bank_account?.account_number || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), account_number: e.target.value } })} />
                                </div>
                              </div>
                              {selectedUser && (
@@ -272,10 +434,10 @@ export default function UserManagement() {
                                     <div className="md:col-span-2 space-y-1">
                                       <Label>Manual Override</Label>
                                       <Slider className="touch-manipulation h-12 md:h-8 [&_[data-radix-collection-item]]:h-12 [&_[data-radix-collection-item]]:w-12 md:[&_[data-radix-collection-item]]:h-6 md:[&_[data-radix-collection-item]]:w-6" value={[overrideScore]} min={0} max={1000} step={1} onValueChange={(v) => setOverrideScore(Math.max(0, Math.min(1000, Number(v[0] || 0))))} />
-                                      <div className="grid grid-cols-3 gap-3 items-center">
-                                        <Input inputMode="numeric" pattern="[0-9]*" placeholder="Score" value={String(overrideScore)} onChange={(e) => setOverrideScore(Math.max(0, Math.min(1000, Number(e.target.value || 0))))} />
-                                        <Input placeholder="Reason (required)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
-                                        <Button type="button" className="h-12 md:h-9" variant="outline" onClick={applyOverrideScore}>Apply</Button>
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                                        <Input className="h-12" inputMode="numeric" pattern="[0-9]*" placeholder="Score" value={String(overrideScore)} onChange={(e) => setOverrideScore(Math.max(0, Math.min(1000, Number(e.target.value || 0))))} />
+                                        <Input className="h-12" placeholder="Reason (required)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
+                                        <Button type="button" className="h-12" variant="outline" onClick={applyOverrideScore}>Apply</Button>
                                       </div>
                                     </div>
                                   </div>
@@ -316,14 +478,14 @@ export default function UserManagement() {
                                </div>
                              )}
                              {selectedUser && (
-                               <div className="space-y-3 border-t pt-4">
-                                 <Label>Allocate Bonus</Label>
-                                 <div className="grid grid-cols-3 gap-3">
-                                   <Input placeholder="Amount" type="number" value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} />
-                                   <Input placeholder="Note" value={bonusNote} onChange={(e) => setBonusNote(e.target.value)} />
-                                   <Input placeholder="Expires At (ISO)" value={bonusExpire} onChange={(e) => setBonusExpire(e.target.value)} />
-                                 </div>
-                                 <Button type="button" onClick={handleAllocateBonus}>Add Bonus</Button>
+                                <div className="space-y-3 border-t pt-4">
+                                  <Label>Allocate Bonus</Label>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <Input className="h-12" placeholder="Amount" type="number" value={bonusAmount} onChange={(e) => setBonusAmount(e.target.value)} />
+                                    <Input className="h-12" placeholder="Note" value={bonusNote} onChange={(e) => setBonusNote(e.target.value)} />
+                                    <Input className="h-12" placeholder="Expires At (ISO)" value={bonusExpire} onChange={(e) => setBonusExpire(e.target.value)} />
+                                  </div>
+                                  <Button className="h-12" type="button" onClick={handleAllocateBonus}>Add Bonus</Button>
                                  <div className="text-xs text-muted-foreground">Recent Bonuses:</div>
                                  <div className="max-h-24 overflow-y-auto text-xs">
                                    {db.getUserBonuses(selectedUser.id).slice(0,5).map(b => (
@@ -343,8 +505,8 @@ export default function UserManagement() {
                                   <Slider aria-labelledby="label-user-payout" aria-describedby="desc-user-payout" className="touch-manipulation h-12 md:h-8 [&_[data-radix-collection-item]]:h-12 [&_[data-radix-collection-item]]:w-12 md:[&_[data-radix-collection-item]]:h-6 md:[&_[data-radix-collection-item]]:w-6" value={[selectedUser.payout_percentage ?? 0]} onValueChange={(v) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(v[0] || 0))) })} min={0} max={100} step={1} />
                                 </div>
                                 <div className="space-y-1">
-                                  <Input aria-label="Payout percentage" inputMode="numeric" pattern="[0-9]*" placeholder="%" value={String(Math.round(selectedUser.payout_percentage ?? 0))} onChange={(e) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(e.target.value || 0))) })} />
-                                  <Button aria-label="Save user payout" type="button" className="h-12 md:h-9" onClick={async () => {
+                                  <Input className="h-12" aria-label="Payout percentage" inputMode="numeric" pattern="[0-9]*" placeholder="%" value={String(Math.round(selectedUser.payout_percentage ?? 0))} onChange={(e) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(e.target.value || 0))) })} />
+                                  <Button aria-label="Save user payout" type="button" className="h-12" onClick={async () => {
                                     if (!token) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'Login token required.' }); return; }
                                     const pct = Math.round(selectedUser.payout_percentage ?? 0);
                                     const r = await fetch(`${apiBase}/admin/users/payout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ userId: selectedUser.id, payoutPct: pct, reason: overrideReason }) });
@@ -359,7 +521,7 @@ export default function UserManagement() {
                               <Input aria-label="Reason (optional)" placeholder="Reason (optional)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
                             </div>
 
-                             <Button type="submit" className="w-full">Save Changes</Button>
+                             <Button type="submit" className="w-full h-12">Save Changes</Button>
                           </form>
                         </DialogContent>
                       )}
