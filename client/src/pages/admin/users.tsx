@@ -1,4 +1,4 @@
-import { db, User, Role, KYCStatus, MembershipTier, Bonus } from '@/lib/mock-data';
+import { db, User, Role, KYCStatus, MembershipTier, Bonus, Wallet } from '@/lib/mock-data';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,10 @@ import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Search, Edit } from 'lucide-react';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
+import { Slider } from '@/components/ui/slider';
+import { toUSD, fmtUSD } from '@/lib/utils';
 
 export default function UserManagement() {
   const { toast } = useToast();
@@ -19,15 +22,34 @@ export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [overrideReason, setOverrideReason] = useState<string>('');
   const [bonusAmount, setBonusAmount] = useState('');
   const [bonusNote, setBonusNote] = useState('');
   const [bonusExpire, setBonusExpire] = useState<string>('');
   const [overrideScore, setOverrideScore] = useState<number>(0);
-  const [overrideReason, setOverrideReason] = useState<string>('');
+  const [wallets, setWallets] = useState<Wallet[]>([]);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+  
 
   useEffect(() => {
     setUsers(db.getUsers());
   }, []);
+
+  
+
+  useEffect(() => {
+    if (!selectedUser) {
+      setWallets([]);
+      setWalletsLoading(false);
+      return;
+    }
+    setWalletsLoading(true);
+    try { setWallets(db.getUserWallets(selectedUser.id)); } finally { setWalletsLoading(false); }
+    const id = window.setInterval(() => {
+      try { setWallets(db.getUserWallets(selectedUser.id)); } catch {}
+    }, 2000);
+    return () => { window.clearInterval(id); };
+  }, [selectedUser]);
 
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(search.toLowerCase()) || 
@@ -113,6 +135,7 @@ export default function UserManagement() {
 
   return (
     <div className="space-y-6">
+      
       <div className="flex items-center justify-between sm:flex-row sm:items-center sm:justify-between flex-col gap-3 stack-sm">
         <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
         <div className="relative w-full sm:w-64">
@@ -155,9 +178,23 @@ export default function UserManagement() {
                   <TableCell className="text-right">
                     <Dialog open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-12 w-12" onClick={() => setSelectedUser(user)} aria-label={`Edit ${user.name}`}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-12 w-12 md:h-10 md:w-10 rounded-full hover:bg-primary/10 focus-visible:ring-2"
+                                onClick={() => setSelectedUser(user)}
+                                aria-label={`Edit ${user.name}`}
+                                title={`Edit ${user.name}`}
+                              >
+                                <Edit className="h-5 w-5 md:h-4 md:w-4" aria-hidden="true" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">Edit {user.name}</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </DialogTrigger>
                       {selectedUser && selectedUser.id === user.id && (
                         <DialogContent>
@@ -225,26 +262,57 @@ export default function UserManagement() {
                              {selectedUser && (
                                <div className="space-y-3 border-t pt-4">
                                  <Label>Credit Score</Label>
-                                 <div className="grid grid-cols-2 gap-4 text-sm">
-                                   <div>
-                                     <div className="text-muted-foreground">Current</div>
-                                     <div className="font-bold text-primary text-xl">{selectedUser.credit_score ?? 0}</div>
-                                     <div className="text-xs text-muted-foreground">Updated: {selectedUser.credit_score_last_updated ? new Date(selectedUser.credit_score_last_updated).toLocaleString() : '-'}</div>
-                                   </div>
-                                   <div className="space-y-2">
-                                     <Label>Manual Override</Label>
-                                     <input type="range" min={0} max={1000} value={overrideScore} onChange={(e) => setOverrideScore(Number(e.target.value))} />
-                                     <Input placeholder="Reason (required)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
-                                     <Button variant="outline" onClick={applyOverrideScore}>Apply Override</Button>
-                                   </div>
-                                 </div>
+                                <div className="space-y-2 text-sm">
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                                    <div className="md:col-span-1 space-y-1">
+                                      <div className="text-muted-foreground">Current</div>
+                                      <div className="font-bold text-primary text-xl">{selectedUser.credit_score ?? 0}</div>
+                                      <div className="text-xs text-muted-foreground">Updated: {selectedUser.credit_score_last_updated ? new Date(selectedUser.credit_score_last_updated).toLocaleString() : '-'}</div>
+                                    </div>
+                                    <div className="md:col-span-2 space-y-1">
+                                      <Label>Manual Override</Label>
+                                      <Slider className="touch-manipulation h-12 md:h-8 [&_[data-radix-collection-item]]:h-12 [&_[data-radix-collection-item]]:w-12 md:[&_[data-radix-collection-item]]:h-6 md:[&_[data-radix-collection-item]]:w-6" value={[overrideScore]} min={0} max={1000} step={1} onValueChange={(v) => setOverrideScore(Math.max(0, Math.min(1000, Number(v[0] || 0))))} />
+                                      <div className="grid grid-cols-3 gap-3 items-center">
+                                        <Input inputMode="numeric" pattern="[0-9]*" placeholder="Score" value={String(overrideScore)} onChange={(e) => setOverrideScore(Math.max(0, Math.min(1000, Number(e.target.value || 0))))} />
+                                        <Input placeholder="Reason (required)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
+                                        <Button type="button" className="h-12 md:h-9" variant="outline" onClick={applyOverrideScore}>Apply</Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                                  <div className="grid grid-cols-2 gap-4 text-xs">
                                    <div>Total Deposits: ${selectedUser.total_deposits ?? 0}</div>
                                    <div>Total Trades: {selectedUser.total_trades ?? 0}</div>
                                    <div>Deposit Frequency Score: {selectedUser.deposit_frequency_score ?? 0}</div>
                                    <div>Trading Frequency Score: {selectedUser.trading_frequency_score ?? 0}</div>
                                  </div>
-                                 <Button type="button" variant="secondary" onClick={recalcCreditScore}>Recalculate</Button>
+                                <Button type="button" variant="secondary" onClick={recalcCreditScore}>Recalculate</Button>
+                               </div>
+                             )}
+                             {selectedUser && (
+                               <div className="space-y-3 border-t pt-4">
+                                 <Label>Wallets</Label>
+                                 <div className="text-xs text-muted-foreground">Current account balances</div>
+                                 <Table>
+                                   <TableHeader>
+                                     <TableRow>
+                                       <TableHead>Asset</TableHead>
+                                       <TableHead>Balance</TableHead>
+                                     </TableRow>
+                                   </TableHeader>
+                                   <TableBody>
+                                     {walletsLoading && (
+                                       <TableRow><TableCell colSpan={2}>Loading...</TableCell></TableRow>
+                                     )}
+                                     {!walletsLoading && wallets.map(w => (
+                                       <TableRow key={w.id}>
+                                         <TableCell>{w.asset_name}</TableCell>
+                                         <TableCell>{fmtUSD(toUSD(w.asset_name, w.balance))}</TableCell>
+                                       </TableRow>
+                                     ))}
+                                   </TableBody>
+                                 </Table>
+                                 <div className="text-xs">Total USD: {fmtUSD(wallets.reduce((s, w) => s + toUSD(w.asset_name, w.balance), 0))}</div>
                                </div>
                              )}
                              {selectedUser && (
@@ -264,6 +332,33 @@ export default function UserManagement() {
                                  </div>
                                </div>
                              )}
+                            <div className="space-y-2 border-t pt-3">
+                              <Label id="label-user-payout">User Payout Percentage</Label>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                                <div className="md:col-span-2 space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <div className="text-xs text-muted-foreground" id="desc-user-payout">Override payout for this user</div>
+                                    <div className="text-sm font-medium" aria-live="polite">{Math.round(selectedUser.payout_percentage ?? 0)}%</div>
+                                  </div>
+                                  <Slider aria-labelledby="label-user-payout" aria-describedby="desc-user-payout" className="touch-manipulation h-12 md:h-8 [&_[data-radix-collection-item]]:h-12 [&_[data-radix-collection-item]]:w-12 md:[&_[data-radix-collection-item]]:h-6 md:[&_[data-radix-collection-item]]:w-6" value={[selectedUser.payout_percentage ?? 0]} onValueChange={(v) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(v[0] || 0))) })} min={0} max={100} step={1} />
+                                </div>
+                                <div className="space-y-1">
+                                  <Input aria-label="Payout percentage" inputMode="numeric" pattern="[0-9]*" placeholder="%" value={String(Math.round(selectedUser.payout_percentage ?? 0))} onChange={(e) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(e.target.value || 0))) })} />
+                                  <Button aria-label="Save user payout" type="button" className="h-12 md:h-9" onClick={async () => {
+                                    if (!token) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'Login token required.' }); return; }
+                                    const pct = Math.round(selectedUser.payout_percentage ?? 0);
+                                    const r = await fetch(`${apiBase}/admin/users/payout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ userId: selectedUser.id, payoutPct: pct, reason: overrideReason }) });
+                                    if (!r.ok) { toast({ variant: 'destructive', title: 'Save failed', description: `${r.status}` }); return; }
+                                    const data = await r.json().catch(() => null);
+                                    const val = typeof data?.payoutPct === 'number' ? Number(data.payoutPct) : pct;
+                                    setSelectedUser({ ...selectedUser, payout_percentage: val });
+                                    toast({ title: 'User Payout Updated', description: `${Math.round(val)}%` });
+                                  }}>Save</Button>
+                                </div>
+                              </div>
+                              <Input aria-label="Reason (optional)" placeholder="Reason (optional)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
+                            </div>
+
                              <Button type="submit" className="w-full">Save Changes</Button>
                           </form>
                         </DialogContent>

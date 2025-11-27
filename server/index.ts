@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, getPresence, registerPresenceRoutes } from "./routes";
+import { ensureSchema } from "./db";
 import { WebSocketServer } from "ws";
 import { Counter } from "prom-client";
 import { nanoid } from "nanoid";
@@ -114,6 +115,7 @@ app.use((req, res, next) => {
 
 const isVercel = !!process.env.VERCEL;
 (async () => {
+  try { await ensureSchema(); } catch {}
   const server = await registerRoutes(app);
 
   if (app.get('env') !== 'development') {
@@ -150,10 +152,9 @@ const isVercel = !!process.env.VERCEL;
     // Ideally restart, but in dev keep alive to avoid loop
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (!isVercel && app.get("env") === "development") {
+  // Only enable Vite dev server when explicitly requested
+  const enableViteDev = app.get("env") === "development" && process.env.ENABLE_VITE_DEV === "1";
+  if (!isVercel && enableViteDev) {
     const { setupVite } = await import('./vite')
     await setupVite(app, server);
   } else {

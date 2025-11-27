@@ -10,6 +10,7 @@ import { Formik, Form, Field } from 'formik'
 import * as Yup from 'yup'
 import Dropzone from 'react-dropzone'
 import AvatarEditor from 'react-avatar-editor'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 export default function ProfilePage() {
   const { user, token } = useAuth()
@@ -19,6 +20,12 @@ export default function ProfilePage() {
   const [roleInfo, setRoleInfo] = useState<any>({})
   const [image, setImage] = useState<File | null>(null)
   const editorRef = useRef<AvatarEditor | null>(null)
+  const [traders, setTraders] = useState<{ id: string; name: string }[]>([])
+  const [overrides, setOverrides] = useState<{ id: string; traderId: string; pct: number; startDate: string; endDate: string }[]>([])
+  const [selectedTraderId, setSelectedTraderId] = useState<string>('')
+  const [overridePct, setOverridePct] = useState<string>('')
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
 
   useEffect(() => {
     ;(async () => {
@@ -28,10 +35,25 @@ export default function ProfilePage() {
           const d = await r.json()
           setInitial({ name: d.name || user?.name || '', email: d.email || user?.email || '', phone: d.phone || '', address: d.address || '', secondary: d.secondary || '' })
           setRoleInfo(d.preferences || {})
+          const selfId = String(user?.id || d.id)
+          const selfName = String(d.name || user?.name || d.email || 'Me')
+          setTraders([{ id: selfId, name: selfName }])
         }
       } catch {}
     })()
   }, [apiBase, token, user])
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const r = await fetch(`${apiBase}/payout-overrides`, { headers: { Authorization: token ? `Bearer ${token}` : '' } })
+        if (r.ok) {
+          const list = await r.json()
+          setOverrides(Array.isArray(list) ? list.map((o: any) => ({ id: o.id, traderId: o.traderId, pct: o.pct, startDate: o.startDate, endDate: o.endDate })) : [])
+        }
+      } catch {}
+    })()
+  }, [apiBase, token])
 
   const Schema = Yup.object({
     name: Yup.string().min(2).max(120).required(),
@@ -199,6 +221,84 @@ export default function ProfilePage() {
               </Form>
             )}
           </Formik>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Trader Payout Adjustments</CardTitle>
+          <CardDescription>Overrides affect only your view and calculations</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid md:grid-cols-4 gap-3 items-end" aria-label="Trader payout adjustment">
+            <div className="space-y-2">
+              <Label>Trader</Label>
+              <Select value={selectedTraderId} onValueChange={setSelectedTraderId}>
+                <SelectTrigger className="h-12"><SelectValue placeholder="Select trader" /></SelectTrigger>
+                <SelectContent>
+                  {traders.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Percentage</Label>
+              <Input aria-label="Adjusted percentage" inputMode="numeric" pattern="[0-9]*" placeholder="0-100" value={overridePct} onChange={(e) => setOverridePct(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Start Date</Label>
+              <Input aria-label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>End Date</Label>
+              <Input aria-label="End date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+            <div className="md:col-span-4">
+              <Button className="h-12" onClick={async () => {
+                const pct = Math.round(Math.max(0, Math.min(100, Number(overridePct || 0))))
+                if (!selectedTraderId) { toast({ variant: 'destructive', title: 'Select trader' }); return }
+                if (!Number.isFinite(pct)) { toast({ variant: 'destructive', title: 'Invalid percentage' }); return }
+                if (!startDate || !endDate) { toast({ variant: 'destructive', title: 'Select dates' }); return }
+                try {
+                  const r = await fetch(`${apiBase}/payout-overrides`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ traderId: selectedTraderId, pct, startDate, endDate }) })
+                  if (!r.ok) { toast({ variant: 'destructive', title: 'Save failed' }); return }
+                  const j = await r.json()
+                  setOverrides([j, ...overrides])
+                  setOverridePct('')
+                  setStartDate('')
+                  setEndDate('')
+                  toast({ title: 'Payout adjustment saved' })
+                } catch { toast({ variant: 'destructive', title: 'Network error' }) }
+              }}>Save Adjustment</Button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Existing Adjustments</Label>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Trader</TableHead>
+                  <TableHead>Percentage</TableHead>
+                  <TableHead>Start</TableHead>
+                  <TableHead>End</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {overrides.length === 0 ? (
+                  <TableRow><TableCell colSpan={4}>None</TableCell></TableRow>
+                ) : overrides.map(o => (
+                  <TableRow key={o.id}>
+                    <TableCell>{traders.find(t => t.id === o.traderId)?.name || o.traderId}</TableCell>
+                    <TableCell>{o.pct}%</TableCell>
+                    <TableCell>{new Date(o.startDate).toLocaleDateString()}</TableCell>
+                    <TableCell>{new Date(o.endDate).toLocaleDateString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

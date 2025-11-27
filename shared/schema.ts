@@ -18,6 +18,7 @@ export const users = pgTable("users", {
   twoFactorEnabled: integer("two_factor_enabled").default(0),
   resetPasswordToken: text("reset_password_token"),
   resetPasswordExpires: bigint("reset_password_expires", { mode: "number" }),
+  payoutPct: integer("payout_pct"),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -108,3 +109,34 @@ export const insertNotificationSchema = createInsertSchema(notifications).pick({
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export const payoutAudits = pgTable("payout_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminId: varchar("admin_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  oldPct: integer("old_pct").notNull(),
+  newPct: integer("new_pct").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  payout_audits_user_idx: index("payout_audits_user_idx").on(table.userId),
+  payout_audits_admin_idx: index("payout_audits_admin_idx").on(table.adminId),
+}));
+
+export type PayoutAudit = typeof payoutAudits.$inferSelect;
+
+export const payoutOverrides = pgTable("payout_overrides", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  traderId: varchar("trader_id").notNull(),
+  pct: integer("pct").notNull(),
+  startDate: timestamp("start_date", { mode: 'date' }).notNull(),
+  endDate: timestamp("end_date", { mode: 'date' }).notNull(),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  payout_overrides_user_idx: index("payout_overrides_user_idx").on(table.userId),
+  payout_overrides_trader_idx: index("payout_overrides_trader_idx").on(table.traderId),
+}));
+
+export type PayoutOverride = typeof payoutOverrides.$inferSelect;

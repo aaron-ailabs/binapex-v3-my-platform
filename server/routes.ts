@@ -7,7 +7,7 @@ import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPass
 import { z } from 'zod';
 import { registry, tradeExecutionDuration, loginAttempts } from './metrics';
 import { db, sb, hasSupabase } from './db';
-import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions } from '@shared/schema';
+import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits } from '@shared/schema';
 import * as speakeasy from "speakeasy";
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
 import Redis from 'ioredis';
@@ -391,7 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = String(((req as any).user).sub || '');
     const base = await storage.getUser(userId);
     const p = userProfiles.get(userId) || {};
-    res.json({ id: userId, email: base?.username, role: base?.role, name: p.name || base?.username, phone: p.phone || '', bank_account: p.bank_account || null, preferences: p.preferences || {} });
+    res.json({ id: userId, email: base?.username, role: base?.role, name: p.name || base?.username, phone: p.phone || '', bank_account: p.bank_account || null, preferences: p.preferences || {}, payoutPct: typeof (base as any)?.payoutPct === 'number' ? (base as any).payoutPct : undefined });
   });
   app.post('/api/profile', requireAuth, async (req: Request, res: Response) => {
     const userId = String(((req as any).user).sub || '');
@@ -427,6 +427,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.setHeader('Content-Type', a.mime);
     res.setHeader('Cache-Control', 'public, max-age=60');
     res.end(a.data);
+  });
+
+  const userPayoutOverrides = new Map<string, { id: string; traderId: string; pct: number; startDate: string; endDate: string; createdAt: string; updatedAt: string }[]>();
+  const payoutOverrideSchema = z.object({ traderId: z.string().min(1).max(128), pct: z.number().int().min(0).max(100), startDate: z.string(), endDate: z.string() });
+  app.get('/api/payout-overrides', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    if (db) {
+      const rows = await db.select().from(tblPayoutOverrides).where(eq(tblPayoutOverrides.userId, userId));
+      return res.json(rows.map(r => ({ id: r.id, traderId: r.traderId, pct: r.pct, startDate: (r.startDate as any as Date).toISOString(), endDate: (r.endDate as any as Date).toISOString(), createdAt: (r.createdAt as any as Date).toISOString(), updatedAt: (r.updatedAt as any as Date).toISOString() })));
+    }
+    const list = userPayoutOverrides.get(userId) || [];
+    res.json(list);
+  });
+  app.post('/api/payout-overrides', requireAuth, async (req: Request, res: Response) => {
+    const userId = String(((req as any).user).sub || '');
+    const parsed = payoutOverrideSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid override data' });
+    const { traderId, pct, startDate, endDate } = parsed.data;
+    if (db) {
+      const [row] = await db.insert(tblPayoutOverrides).values({ userId, traderId, pct, startDate: new Date(startDate), endDate: new Date(endDate) }).returning();
+      try { await db.insert(tblPayoutAudits).values({ adminId: userId, userId: traderId, oldPct: 0, newPct: pct, reason: 'user_override' }).execute(); } catch {}
+      return res.json({ id: row.id, traderId: row.traderId, pct: row.pct, startDate: (row.startDate as any as Date).toISOString(), endDate: (row.endDate as any as Date).toISOString(), createdAt: (row.createdAt as any as Date).toISOString(), updatedAt: (row.updatedAt as any as Date).toISOString() });
+    }
+    const id = Math.random().toString(36).slice(2, 10);
+    const now = new Date().toISOString();
+    const rec = { id, traderId, pct: Math.max(0, Math.min(100, Number(pct))), startDate: new Date(startDate).toISOString(), endDate: new Date(endDate).toISOString(), createdAt: now, updatedAt: now };
+    const list = userPayoutOverrides.get(userId) || [];
+    userPayoutOverrides.set(userId, [rec, ...list]);
+    res.json(rec);
   });
 
   const assets = new Map<string, { name: string; market: string; enabled: boolean }>();
@@ -497,9 +526,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const redisUrl = process.env.REDIS_URL || '';
   const redis = redisUrl ? new Redis(redisUrl) : null;
-  const engine = { spreadBps: 25, payoutPct: 85 };
+  const engine = { spreadBps: 25 };
   if (redis) {
-    try { redis.get('engine').then((v) => { if (v) { try { const e = JSON.parse(v); if (typeof e.spreadBps === 'number') engine.spreadBps = e.spreadBps; if (typeof e.payoutPct === 'number') engine.payoutPct = e.payoutPct; } catch {} } }); } catch {}
+    try { redis.get('engine').then((v) => { if (v) { try { const e = JSON.parse(v); if (typeof e.spreadBps === 'number') engine.spreadBps = e.spreadBps; } catch {} } }); } catch {}
   }
   app.get('/api/engine', requireAuth, async (_req: Request, res: Response) => {
     if (redis) {
@@ -508,22 +537,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(engine);
   });
   const engineSchema = z.object({
-    spreadBps: z.number().int().min(0).max(10000).optional(),
-    payoutPct: z.number().min(0).max(100).optional()
+    spreadBps: z.number().int().min(0).max(10000).optional()
   });
   app.post('/api/engine', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
     const parsed = engineSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid engine configuration' });
-    const { spreadBps, payoutPct } = parsed.data;
+    const { spreadBps } = parsed.data;
     if (typeof spreadBps !== 'undefined') {
       engine.spreadBps = Number(spreadBps || engine.spreadBps);
     }
-    if (typeof payoutPct !== 'undefined') {
-      const pct = Math.max(0, Math.min(100, Number(payoutPct)));
-      engine.payoutPct = Number.isFinite(pct) ? pct : engine.payoutPct;
-    }
     if (redis) { try { await redis.set('engine', JSON.stringify(engine)); } catch {} }
+    try { adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: String(((req as any).user)?.sub || 'unknown'), userId: 'system', action: 'engine_update', details: JSON.stringify({ spreadBps: engine.spreadBps }), timestamp: new Date().toISOString() }); } catch {}
     res.json(engine);
+  });
+
+  const userPayoutSchema = z.object({ userId: z.string().min(3).max(64), payoutPct: z.number().int().min(0).max(100), reason: z.string().min(3).max(300).optional() });
+  app.post('/api/admin/users/payout', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-payout', 10, 60000), async (req: Request, res: Response) => {
+    const parsed = userPayoutSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid user payout data' });
+    const { userId, payoutPct } = parsed.data;
+    const u = await storage.getUser(userId);
+    if (!u) return res.status(404).json({ message: 'User not found' });
+    const pct = Math.max(0, Math.min(100, Number(payoutPct)));
+    await storage.updateUser(userId, { payoutPct: pct });
+    try { adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: String(((req as any).user)?.sub || 'unknown'), userId, action: 'payout_update', details: JSON.stringify({ userPayoutPct: pct }), timestamp: new Date().toISOString() }); } catch {}
+    try {
+      const { payoutAudits } = await import('@shared/schema');
+      const { db } = await import('./db');
+      if (db) {
+        await db.insert(payoutAudits).values({ adminId: String(((req as any).user)?.sub || 'unknown'), userId, oldPct: Number(u.payoutPct ?? 85), newPct: pct, reason: String(parsed.data.reason || '') }).execute();
+      }
+    } catch {}
+    res.json({ ok: true, userId, payoutPct: pct });
+  });
+
+  const bulkUserPayoutSchema = z.object({ items: z.array(z.object({ userId: z.string().min(3).max(64), payoutPct: z.number().int().min(0).max(100), reason: z.string().min(3).max(300).optional() })).min(1).max(500) });
+  app.post('/api/admin/users/payout/bulk', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-payout-bulk', 5, 60000), async (req: Request, res: Response) => {
+    const parsed = bulkUserPayoutSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid bulk payload' });
+    const items = parsed.data.items;
+    const results: { userId: string; payoutPct: number; ok: boolean }[] = [];
+    for (const it of items) {
+      const u = await storage.getUser(it.userId);
+      if (!u) { results.push({ userId: it.userId, payoutPct: Number(it.payoutPct), ok: false }); continue; }
+      const pct = Math.max(0, Math.min(100, Number(it.payoutPct)));
+      await storage.updateUser(it.userId, { payoutPct: pct });
+      try { adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: String(((req as any).user)?.sub || 'unknown'), userId: it.userId, action: 'payout_update', details: JSON.stringify({ userPayoutPct: pct }), timestamp: new Date().toISOString() }); } catch {}
+      try {
+        const { payoutAudits } = await import('@shared/schema');
+        const { db } = await import('./db');
+        if (db) {
+          await db.insert(payoutAudits).values({ adminId: String(((req as any).user)?.sub || 'unknown'), userId: it.userId, oldPct: Number(u.payoutPct ?? 85), newPct: pct, reason: String(it.reason || '') }).execute();
+        }
+      } catch {}
+      results.push({ userId: it.userId, payoutPct: pct, ok: true });
+    }
+    res.json({ ok: true, results });
   });
 
   const ALPHA_KEY = process.env.ALPHAVANTAGE_API_KEY || '';
@@ -795,7 +864,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
       const id = Math.random().toString(36).slice(2,9);
       const dir: 'High'|'Low' = direction === 'Low' ? 'Low' : 'High';
-      const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: dir, duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as const, status: 'Open' as const, createdAt: new Date().toISOString(), payoutPct: engine.payoutPct };
+      const userPayout = typeof u?.payoutPct === 'number' ? Math.max(0, Math.min(100, Number(u.payoutPct))) : 85;
+      const t = { id, userId, asset: String(asset), symbol: String(symbol), amount: amt, direction: dir, duration: String(duration || '1M'), entryPrice: base, result: 'Pending' as const, status: 'Open' as const, createdAt: new Date().toISOString(), payoutPct: userPayout };
       trades.set(id, t);
       if (db) {
         db.insert(tblTrades).values({
@@ -809,7 +879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           entryPrice: Math.round(base * 100),
           result: t.result,
           status: t.status,
-          payoutPct: t.payoutPct ?? engine.payoutPct,
+          payoutPct: t.payoutPct,
         }).catch(() => {});
       }
       try { notificationService.send({ userId, type: 'IN_APP', recipient: userId, subject: 'Trade Opened', message: `${t.symbol} ${t.direction} $${t.amount}` }); } catch {}
@@ -846,8 +916,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updated = { ...t, exitPrice: exit, status: 'Closed' as const, result: res };
         trades.set(id, updated);
         const w = await ensureUsdWallet(userId);
-        const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
-        const settled = win ? payout : -t.amount;
+        const payout = Number(((t.amount * (t.payoutPct || 85)) / 100).toFixed(2));
+        const settled = win ? Number((t.amount + payout).toFixed(2)) : -t.amount;
         if (hasSupabase && sb) {
           try {
             await withWalletLock(userId, async () => {
@@ -897,8 +967,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const exit = typeof exitPrice === 'number' ? Number(exitPrice) : Number((t.entryPrice * (1 + 0.01)).toFixed(2));
     const wentUp = exit >= t.entryPrice;
     const win = typeof result !== 'undefined' ? (result === 'Win') : ((t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp));
-    const payout = Number(((t.amount * (t.payoutPct ?? engine.payoutPct)) / 100).toFixed(2));
-    const settled = win ? payout : -t.amount;
+    const payout = Number(((t.amount * (t.payoutPct || 85)) / 100).toFixed(2));
+    const settled = win ? Number((t.amount + payout).toFixed(2)) : -t.amount;
     const delta = Number((settled - prev).toFixed(2));
     const w = await ensureUsdWallet(t.userId);
     if (hasSupabase && sb) {

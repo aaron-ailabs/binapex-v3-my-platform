@@ -84,6 +84,7 @@ export class MemStorage implements IStorage {
       role: 'Trader',
       kycStatus: 'Not Started',
       membershipTier: 'Silver',
+      payoutPct: 85,
       withdrawalPasswordHash: null,
       withdrawalPasswordEnc: null,
       withdrawalPasswordIv: null,
@@ -222,6 +223,7 @@ export class PgStorage implements IStorage {
       twoFactorEnabled: updates.twoFactorEnabled,
       resetPasswordToken: updates.resetPasswordToken,
       resetPasswordExpires: updates.resetPasswordExpires,
+      payoutPct: typeof updates.payoutPct === 'number' ? Math.max(0, Math.min(100, Number(updates.payoutPct))) : (undefined as any),
     }).where(eq(users.id, id)).returning()
     return row ? ({ ...row } as any) : undefined
   }

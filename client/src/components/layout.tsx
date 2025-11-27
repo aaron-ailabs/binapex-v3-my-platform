@@ -62,6 +62,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<string[]>(['Finance', 'Management', 'System']);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [systemStatus, setSystemStatus] = useState<'ok'|'down'|'unknown'>('unknown');
 
   // Session Timeout
   useEffect(() => {
@@ -143,6 +144,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     };
   }, [user, token]);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+        const r = await fetch(`${apiBase}/health`);
+        if (!mounted) return;
+        setSystemStatus(r.ok ? 'ok' : 'down');
+      } catch {
+        if (!mounted) return;
+        setSystemStatus('down');
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
   // Format breadcrumbs
   const pathSegments = location.split('/').filter(Boolean);
   const breadcrumbs = pathSegments.map((segment: string, index: number) => {
@@ -183,7 +200,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { href: '/admin/transactions?type=Deposit', label: 'Deposit Requests', icon: Wallet },
         { href: '/admin/transactions?type=Withdrawal', label: 'Withdrawal Requests', icon: ArrowRightLeft },
         { href: '/admin/banks', label: 'Bank Accounts', icon: Building2 },
-        { href: '/admin/allocations', label: 'Fund Allocation', icon: CreditCard }
+        { href: '/admin/allocations', label: 'Fund Allocation', icon: CreditCard },
+        { href: '/admin/finance', label: 'Financial Monitoring', icon: Activity }
       ]
     },
     {
@@ -192,13 +210,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { href: '/admin/users', label: 'User Management', icon: Users },
         { href: '/admin/kyc', label: 'KYC Queue', icon: FileText },
         { href: '/admin/trading', label: 'Trading Monitor', icon: Activity },
-        { href: '/admin/audit', label: 'Audit Log', icon: FileSearch }
+        { href: '/admin/audit', label: 'Audit Log', icon: FileSearch },
+        { href: '/admin/staff', label: 'Staff Management', icon: Users }
       ]
     },
     {
       group: 'System',
       items: [
-        { href: '/admin/settings', label: 'Settings', icon: Settings }
+        { href: '/admin/settings', label: 'Settings', icon: Settings },
+        { href: '/admin/security', label: 'Security Center', icon: Shield },
+        { href: '/admin/analytics', label: 'Analytics & Reports', icon: FileText },
+        { href: '/admin/compliance', label: 'Compliance', icon: FileSearch }
       ]
     }
   ];
@@ -354,6 +376,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ))}
                 </BreadcrumbList>
               </Breadcrumb>
+               {user.role === 'Admin' && (
+                 <div className="flex items-center gap-3 text-sm">
+                   <span className="font-semibold">Admin Panel - Binapex Malaysia</span>
+                   <Badge variant="secondary">Admin</Badge>
+                   <span className="flex items-center gap-2">
+                     <span className={cn('w-2 h-2 rounded-full', systemStatus === 'ok' ? 'bg-green-500' : systemStatus === 'down' ? 'bg-red-500' : 'bg-yellow-500')} aria-label={systemStatus === 'ok' ? 'All Systems Operational' : systemStatus === 'down' ? 'System Down' : 'Status Unknown'}></span>
+                     <span className="text-muted-foreground text-xs">{systemStatus === 'ok' ? 'All Systems Operational' : systemStatus === 'down' ? 'Issues Detected' : 'Checking...'}</span>
+                   </span>
+                 </div>
+               )}
             </div>
           </div>
 
@@ -422,4 +454,4 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
-} 
+}

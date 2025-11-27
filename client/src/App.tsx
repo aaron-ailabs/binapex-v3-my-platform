@@ -29,6 +29,11 @@ import Markets from "@/pages/marketing/markets";
 import Products from "@/pages/marketing/products";
 import Institutional from "@/pages/marketing/institutional";
 import AdminAllocations from "@/pages/admin/allocations";
+import AdminFinance from "@/pages/admin/finance";
+import AdminAnalytics from "@/pages/admin/analytics";
+import AdminSecurity from "@/pages/admin/security";
+import AdminStaff from "@/pages/admin/staff";
+import AdminCompliance from "@/pages/admin/compliance";
 import ProfilePage from "@/pages/profile";
 
 import CSDashboard from "@/pages/cs/dashboard";
@@ -121,6 +126,21 @@ function Router() {
       </Route>
       <Route path="/admin/allocations">
         <ProtectedRoute component={AdminAllocations} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/finance">
+        <ProtectedRoute component={AdminFinance} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/analytics">
+        <ProtectedRoute component={AdminAnalytics} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/security">
+        <ProtectedRoute component={AdminSecurity} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/staff">
+        <ProtectedRoute component={AdminStaff} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/compliance">
+        <ProtectedRoute component={AdminCompliance} allowedRoles={['Admin']} />
       </Route>
 
       {/* CS Routes */}

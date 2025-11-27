@@ -93,13 +93,28 @@ export default function LiveTrading() {
   useEffect(() => {
     (async () => {
       try {
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        if (!token) return;
+        const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
         const base = (import.meta.env.VITE_API_BASE as string) || '/api';
         const res = await fetch(`${base}/engine`, { headers });
         if (res.ok) {
           const d = await res.json();
           if (typeof d.spreadBps === 'number') setSpreadBps(d.spreadBps);
-          if (typeof d.payoutPct === 'number') setPayoutPct(Math.max(0, Math.min(100, d.payoutPct)));
+        }
+        const pr = await fetch(`${base}/profile`, { headers });
+        if (pr.ok) {
+          const j = await pr.json();
+          if (typeof j.payoutPct === 'number') setPayoutPct(Math.max(0, Math.min(100, j.payoutPct)));
+          try {
+            const or = await fetch(`${base}/payout-overrides`, { headers });
+            if (or.ok) {
+              const list = await or.json();
+              const selfId = String(user?.id || j.id);
+              const now = Date.now();
+              const match = Array.isArray(list) ? list.find((o: any) => String(o.traderId) === selfId && now >= Date.parse(String(o.startDate)) && now <= Date.parse(String(o.endDate))) : null;
+              if (match && typeof match.pct === 'number') setPayoutPct(Math.max(0, Math.min(100, Number(match.pct))));
+            }
+          } catch {}
         }
       } catch {}
     })();
@@ -181,13 +196,17 @@ export default function LiveTrading() {
       toast({ variant: 'destructive', title: 'Login Required', description: 'Please sign in to place trades.' });
       return;
     }
+    if (!token) {
+      toast({ variant: 'destructive', title: 'Authorization Required', description: 'Session token missing. Please log out and log back in.' });
+      return;
+    }
     try {
       const fallback = Math.abs(assetSymbol.split('').reduce((s,c)=>s + c.charCodeAt(0),0)) % 1000 + 100;
       const body = { symbol: assetSymbol, asset: assetName, amount: Number(amount), direction, duration, entryPrice: price ?? fallback };
       const base = (import.meta.env.VITE_API_BASE as string) || '/api';
       const res = await fetch(`${base}/trades`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body)
       });
       if (!res.ok) {

@@ -5,6 +5,18 @@ import tsconfigPaths from "vite-tsconfig-paths";
 // https://vite.dev/config/
 export default defineConfig({
   root: 'client',
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        ws: true,
+        secure: false,
+      },
+    },
+  },
   build: {
     sourcemap: 'hidden',
     chunkSizeWarningLimit: 2000,

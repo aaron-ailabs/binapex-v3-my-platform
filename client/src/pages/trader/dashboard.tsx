@@ -25,7 +25,8 @@ export default function TraderDashboard() {
       setBonuses(db.getUserBonuses(user.id));
       (async () => {
         try {
-          const r = await fetch(`${apiBase}/credit-score`, { headers: { Authorization: token ? `Bearer ${token}` : '' } });
+          if (!token) return;
+          const r = await fetch(`${apiBase}/credit-score`, { headers: { Authorization: `Bearer ${token}` } });
           if (r.ok) {
             const data = await r.json();
             setCreditScore(Number(data.score || 0));
@@ -37,7 +38,8 @@ export default function TraderDashboard() {
           }
         } catch { setSyncStatus('error'); }
         try {
-          const es = new EventSource(`${apiBase}/credit-score/stream?token=${encodeURIComponent(token || '')}`);
+          if (!token) return;
+          const es = new EventSource(`${apiBase}/credit-score/stream?token=${encodeURIComponent(token)}`);
           es.onmessage = (ev) => {
             try {
               const payload = JSON.parse(ev.data);

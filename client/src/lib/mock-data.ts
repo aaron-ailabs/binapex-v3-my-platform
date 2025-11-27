@@ -30,6 +30,7 @@ export interface User {
   phone?: string;
   bank_account?: { bank_name: string; account_number: string; account_name?: string };
   ip_address?: string;
+  payout_percentage?: number;
 }
 
 export interface Wallet {
@@ -80,7 +81,7 @@ export interface AdminActionLog {
   id: string;
   admin_id: string;
   user_id: string;
-  action: 'membership_change' | 'credit_score_adjustment' | 'bonus_allocation';
+  action: 'membership_change' | 'credit_score_adjustment' | 'bonus_allocation' | 'payout_adjustment';
   details: string;
   timestamp: string;
 }

@@ -67,7 +67,7 @@ export default function Deposits() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">USD (Bank Transfer)</SelectItem>
+                  <SelectItem value="USD">USD (Bank Transfer MYR)</SelectItem>
                   <SelectItem value="BTC">Bitcoin</SelectItem>
                   <SelectItem value="ETH">Ethereum</SelectItem>
                   <SelectItem value="USDT">USDT (TRC20)</SelectItem>
@@ -76,7 +76,7 @@ export default function Deposits() {
             </div>
             
             <div className="space-y-2">
-              <Label>Amount</Label>
+              <Label>Amount ( MYR )</Label>
               <Input 
                 type="number" 
                 placeholder="1000" 

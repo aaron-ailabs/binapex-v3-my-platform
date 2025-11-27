@@ -49,9 +49,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const uname = email.includes('@') ? email.split('@')[0] : email;
         const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+        // Fetch CSRF first for non-dev environments
+        fetch(`${apiBase}/csrf`, { method: 'GET' }).catch(() => {});
+        const xsrf = (() => {
+          try {
+            const m = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
+            return m ? decodeURIComponent(m.split('=')[1] || '') : '';
+          } catch { return ''; }
+        })();
         fetch(`${apiBase}/auth/login`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(xsrf ? { 'X-CSRF-Token': xsrf } : {}) },
           body: JSON.stringify({ username: uname, password: password || found.password || 'password' })
         }).then(async (r) => {
           if (!r.ok) return;
