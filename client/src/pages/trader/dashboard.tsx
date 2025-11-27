@@ -16,7 +16,7 @@ export default function TraderDashboard() {
   const [creditConfig, setCreditConfig] = useState<{ decimals: number; rounding: 'nearest'|'down'|'up' }>({ decimals: 0, rounding: 'nearest' });
   const [creditUpdatedAt, setCreditUpdatedAt] = useState<number>(Date.now());
   const [syncStatus, setSyncStatus] = useState<'ok'|'updating'|'mismatch'|'error'>('ok');
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
 
   useEffect(() => {
     if (user) {

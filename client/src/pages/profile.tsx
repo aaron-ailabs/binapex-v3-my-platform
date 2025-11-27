@@ -14,7 +14,7 @@ import AvatarEditor from 'react-avatar-editor'
 export default function ProfilePage() {
   const { user, token } = useAuth()
   const { toast } = useToast()
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api'
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api'
   const [initial, setInitial] = useState<any>({ name: '', email: '', phone: '', address: '', secondary: '' })
   const [roleInfo, setRoleInfo] = useState<any>({})
   const [image, setImage] = useState<File | null>(null)

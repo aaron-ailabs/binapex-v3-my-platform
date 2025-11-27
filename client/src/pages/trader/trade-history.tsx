@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 
 export default function TradeHistory() {
   const { user, token } = useAuth();
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const [trades, setTrades] = useState<Trade[]>([]);
 
   useEffect(() => {

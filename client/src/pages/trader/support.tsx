@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 export default function Support() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const wsBase = (import.meta.env.VITE_WS_BASE as string) || 'ws://localhost:5000';
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');

@@ -79,7 +79,7 @@ export default function LandingPage() {
   const [fxSpreadText, setFxSpreadText] = useState<string>('');
   
 
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const esRef = useRef<EventSource | null>(null);
   const [visiblePrices, setVisiblePrices] = useState<Record<string, number>>({});
   const pricesRef = useRef<Record<string, number>>({});

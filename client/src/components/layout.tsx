@@ -117,7 +117,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       try {
         const token = localStorage.getItem('token') || '';
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-        const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
         const res = await fetch(`${apiBase}/notifications?unread=1`, { headers });
         if (res.ok) {
           const list = await res.json();
@@ -125,7 +125,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         }
       } catch {}
       try {
-        const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
         const url = `${apiBase}/notifications/stream?token=${encodeURIComponent(token)}`;
         es = new EventSource(url);
         es.onmessage = (e) => {

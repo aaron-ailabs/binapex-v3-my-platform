@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const uname = email.includes('@') ? email.split('@')[0] : email;
-        const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+        const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
         fetch(`${apiBase}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

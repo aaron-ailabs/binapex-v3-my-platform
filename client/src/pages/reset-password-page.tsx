@@ -56,7 +56,7 @@ export default function ResetPasswordPage() {
 
     setIsSubmitting(true);
     try {
-      await apiRequest('POST', ((import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api') + '/auth/reset-password', { 
+      await apiRequest('POST', ((import.meta.env.VITE_API_BASE as string) || '/api') + '/auth/reset-password', { 
         token, 
         password, 
         confirmPassword 

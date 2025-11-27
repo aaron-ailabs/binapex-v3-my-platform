@@ -77,7 +77,7 @@ export default function LiveTrading() {
   const [spreadBps, setSpreadBps] = useState<number>(db.getEngineSettings().spreadBps);
   const [payoutPct, setPayoutPct] = useState<number>(85);
   const [price, setPrice] = useState<number | null>(null);
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const esRef = useRef<EventSource | null>(null);
   const retryRef = useRef<number>(1000);
   const timerRef = useRef<any>(null);
@@ -94,7 +94,8 @@ export default function LiveTrading() {
     (async () => {
       try {
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-        const res = await fetch(`${apiBase}/engine`, { headers });
+        const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+        const res = await fetch(`${base}/engine`, { headers });
         if (res.ok) {
           const d = await res.json();
           if (typeof d.spreadBps === 'number') setSpreadBps(d.spreadBps);
@@ -110,7 +111,8 @@ export default function LiveTrading() {
     if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
     (async () => {
       try {
-        const res = await fetch(`${apiBase}/prices/alpha?symbol=${encodeURIComponent(assetSymbol)}`);
+        const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+        const res = await fetch(`${base}/prices/alpha?symbol=${encodeURIComponent(assetSymbol)}`);
         if (res.ok) {
           const d = await res.json();
           if (typeof d.price === 'number') setPrice(d.price);
@@ -118,7 +120,8 @@ export default function LiveTrading() {
       } catch {}
     })();
     const connect = () => {
-      const url = `${apiBase}/prices/stream?symbols=${encodeURIComponent(assetSymbol)}`;
+      const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+      const url = `${base}/prices/stream?symbols=${encodeURIComponent(assetSymbol)}`;
       const es = new EventSource(url);
       esRef.current = es;
       es.onopen = () => { retryRef.current = 1000; };
@@ -181,7 +184,8 @@ export default function LiveTrading() {
     try {
       const fallback = Math.abs(assetSymbol.split('').reduce((s,c)=>s + c.charCodeAt(0),0)) % 1000 + 100;
       const body = { symbol: assetSymbol, asset: assetName, amount: Number(amount), direction, duration, entryPrice: price ?? fallback };
-      const res = await fetch(`${apiBase}/trades`, {
+      const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+      const res = await fetch(`${base}/trades`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(body)

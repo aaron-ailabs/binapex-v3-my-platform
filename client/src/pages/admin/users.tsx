@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 export default function UserManagement() {
   const { toast } = useToast();
   const { user: admin, token } = useAuth();
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
+  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
