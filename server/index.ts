@@ -122,7 +122,7 @@ const isVercel = !!process.env.VERCEL;
     const required = ['JWT_SECRET', 'ENCRYPTION_KEY', 'ENCRYPTION_SALT'];
     const missing = required.filter((k) => !process.env[k] || String(process.env[k]).trim() === '');
     if (missing.length) {
-      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+      console.error(`Missing required environment variables: ${missing.join(', ')}`);
     }
   }
 

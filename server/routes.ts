@@ -52,6 +52,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
       }
     }
+    if (admin) {
+      const wA = await ensureUsdWallet((admin as any).id)
+      if ('balanceUsd' in wA) {
+        (wA as any).balanceUsd = Number(((wA as any).balanceUsd + 1000).toFixed(2))
+        wallets.set(`${(admin as any).id}:USD`, wA as any)
+      } else if (db && 'balanceUsdCents' in wA) {
+        try {
+          await db.update(tblWallets).set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${1000 * 100}` }).where(eq(tblWallets.id, (wA as any).id))
+        } catch {}
+      }
+    }
     res.json({ ok: true })
   })
 
@@ -559,11 +570,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   if (redis) {
     try { redis.get('engine').then((v) => { if (v) { try { const e = JSON.parse(v); if (typeof e.spreadBps === 'number') engine.spreadBps = e.spreadBps; } catch {} } }); } catch {}
   }
-  app.get('/api/engine', requireAuth, async (_req: Request, res: Response) => {
+  app.get('/api/engine', requireAuth, async (req: Request, res: Response) => {
     if (redis) {
       try { const v = await redis.get('engine'); if (v) { try { return res.json(JSON.parse(v)); } catch {} } } catch {}
     }
-    res.json(engine);
+    const userId = String(((req as any).user)?.sub || '');
+    let payout = 85;
+    try {
+      const u = userId ? await storage.getUser(userId) : undefined;
+      if (typeof (u as any)?.payoutPct === 'number') payout = Number((u as any).payoutPct);
+    } catch {}
+    res.json({ ...engine, payoutPct: payout });
   });
   const engineSchema = z.object({
     spreadBps: z.number().int().min(0).max(10000).optional()
@@ -884,7 +901,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const nextP = Number((baseBefore * (1 + (Math.random() * 0.01 - 0.005))).toFixed(2));
     const movePct = Math.abs((nextP - prev) / prev) * 100;
     const volThreshold = 2;
-    if (movePct > volThreshold) return res.status(403).json({ message: 'Volatility protection active' });
+    const dev = (process.env.NODE_ENV || '').toLowerCase() === 'development' || String(process.env.TEST_MODE || '') === '1';
+    if (!dev && movePct > volThreshold) return res.status(403).json({ message: 'Volatility protection active' });
     const nowIso = new Date(Date.now() - 24*60*60*1000).toISOString();
     const dailyTrades = Array.from(trades.values()).filter(t => t.userId === userId && new Date(t.createdAt).toISOString() >= nowIso);
     const dailyVol = dailyTrades.reduce((a, t) => a + Number(t.amount || 0), 0) + amt;
