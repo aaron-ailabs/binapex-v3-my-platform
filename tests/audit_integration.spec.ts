@@ -1,29 +1,25 @@
 
 import assert from 'node:assert'
+import { initCsrf, withCsrf, json as httpJson } from './utils/csrf'
 
-const base = 'http://127.0.0.1:5000'
+const base = process.env.BASE_URL || 'http://127.0.0.1:5000'
 
-async function json(url: string, init?: RequestInit) {
-  const r = await fetch(url, { ...(init || {}), headers: { ...(init?.headers || {}), Accept: 'application/json' } })
-  const t = await r.text()
-  let body: any = t
-  try { body = JSON.parse(t) } catch {}
-  return { ok: r.ok, status: r.status, body }
-}
+async function json(url: string, init?: RequestInit) { return httpJson(url, init) }
 
 async function run() {
   console.log('Starting Audit Integration Tests...')
 
+  const csrf = await initCsrf(base)
+
   // 1. Setup & Auth
-  await json(`${base}/api/demo/seed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  await json(`${base}/api/demo/seed`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: '{}' })
   
-  const loginTrader = await json(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'trader', password: 'password' }) })
+  const loginTrader = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'trader', password: 'password' }) })
   assert.equal(loginTrader.ok, true, 'Trader login failed')
   const tToken = String(loginTrader.body.token || '')
-  const tUserId = String(loginTrader.body.userId || '')
   const tAuth = { Authorization: `Bearer ${tToken}` }
   
-  const loginAdmin = await json(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'password' }) })
+  const loginAdmin = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'password' }) })
   assert.equal(loginAdmin.ok, true, 'Admin login failed')
   const aToken = String(loginAdmin.body.token || '')
   const aAuth = { Authorization: `Bearer ${aToken}` }

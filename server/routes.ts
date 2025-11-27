@@ -26,6 +26,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: 'ok' });
   });
 
+  app.post('/api/demo/seed', async (_req: Request, res: Response) => {
+    const enabled = String(process.env.ENABLE_DEMO_SEED || '') === '1'
+    if (!enabled) return res.status(403).json({ message: 'Disabled' })
+    const adminExisting = await storage.getUserByUsername('admin')
+    const traderExisting = await storage.getUserByUsername('trader')
+    let admin = adminExisting
+    let trader = traderExisting
+    if (!admin) {
+      admin = await storage.createUser({ username: 'admin', password: 'password' } as any)
+      await storage.updateUser((admin as any).id, { role: 'Admin' })
+    }
+    if (!trader) {
+      trader = await storage.createUser({ username: 'trader', password: 'password' } as any)
+      await storage.updateUser((trader as any).id, { role: 'Trader', payoutPct: 85 })
+    }
+    if (trader) {
+      const w = await ensureUsdWallet((trader as any).id)
+      if ('balanceUsd' in w) {
+        (w as any).balanceUsd = Number(((w as any).balanceUsd + 1000).toFixed(2))
+        wallets.set(`${(trader as any).id}:USD`, w as any)
+      } else if (db && 'balanceUsdCents' in w) {
+        try {
+          await db.update(tblWallets).set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${1000 * 100}` }).where(eq(tblWallets.id, (w as any).id))
+        } catch {}
+      }
+    }
+    res.json({ ok: true })
+  })
+
   app.get('/api/metrics', async (_req: Request, res: Response) => {
     res.setHeader('Content-Type', registry.contentType);
     res.end(await registry.metrics());

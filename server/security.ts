@@ -11,6 +11,12 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     res.setHeader('Content-Security-Policy', "default-src 'self' blob: data: https: http:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https: http:; style-src 'self' 'unsafe-inline' https: http: data:; img-src 'self' data: https: http:; connect-src 'self' http: https: ws: wss:; font-src 'self' https://fonts.gstatic.com data:; worker-src 'self' blob:; frame-src https: http:")
   } else {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; connect-src 'self' https: wss:; font-src 'self' https://fonts.gstatic.com; worker-src 'self'; frame-src https:")
+    res.setHeader('X-Robots-Tag', 'all')
+  }
+  const required = ['Strict-Transport-Security','X-Content-Type-Options','X-Frame-Options','Referrer-Policy','Permissions-Policy','Content-Security-Policy']
+  const missing = required.filter(k => !res.getHeader(k))
+  if (missing.length && env === 'development') {
+    console.warn(`Missing security headers: ${missing.join(', ')}`)
   }
   next()
 }
