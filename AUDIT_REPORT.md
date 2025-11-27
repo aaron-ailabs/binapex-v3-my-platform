@@ -48,10 +48,12 @@ A new automated test suite (`tests/audit_integration.spec.ts`) was created to va
 - **Test Coverage:** Added integration tests covering the "happy path" and fallback scenarios.
 
 ### Observations for Future Development
-- **Balance Check Missing:** The current `POST /api/trades` implementation does not strictly check if `wallet.balance >= tradeAmount` before opening a trade. This allows users to trade with insufficient funds in this demo environment.
-  - *Recommendation:* Implement a balance check and lock/deduct funds immediately upon trade creation to prevent negative balances.
 - **Settlement Model:** The current logic calculates settlement at close. A more standard approach for binary options/trading is to deduct the stake at **Open** and credit (Stake + Payout) only on **Win**.
   - *Current Behavior:* Balance is adjusted by the net difference at close. This works mathematically but differs from standard ledger practices.
+
+### Resolved Observations
+- **Balance Check:** (FIXED) The `POST /api/trades` endpoint now strictly checks `wallet.balance - locked_funds >= tradeAmount`.
+  - *Status:* Implemented check in `server/routes.ts` and verified with negative tests.
 
 ## 6. Conclusion
 The codebase is verified to be logically sound regarding the reported issues. The trading engine is robust against missing external data providers, and the settlement math is correct within the current architectural model.

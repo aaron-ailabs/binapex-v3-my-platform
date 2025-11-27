@@ -862,10 +862,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (dailyVol > dailyVolumeLimit) return res.status(403).json({ message: 'Daily trade limit exceeded' });
     const dailyLoss = dailyTrades.filter(t => t.status === 'Closed' && t.result === 'Loss').reduce((a, t) => a + Math.abs(Number(t.settledUsd || 0)), 0);
     if (dailyLoss >= dailyLossLimit) return res.status(403).json({ message: 'Daily loss limit reached' });
-    return uPromise.then((u) => {
+    return uPromise.then(async (u) => {
       const tier = (u?.membershipTier || 'Silver') as string;
       const maxAmt = tierLimits[tier] || tierLimits.Silver;
       if (amt > maxAmt) return res.status(403).json({ message: 'Maximum trade size exceeded' });
+
+      const w = await ensureUsdWallet(userId);
+      let balance = 0;
+      if ('balanceUsd' in w) balance = Number(w.balanceUsd);
+      if ('balanceUsdCents' in w) balance = Number(w.balanceUsdCents) / 100;
+
+      let locked = 0;
+      if (db) {
+        const openTrades = await db.select().from(tblTrades).where(and(eq(tblTrades.userId, userId), eq(tblTrades.status, 'Open')));
+        locked = openTrades.reduce((a, t) => a + (t.amountUsdCents / 100), 0);
+      } else {
+        locked = openForUser.reduce((a, t) => a + Number(t.amount), 0);
+      }
+
+      if (balance - locked < amt) {
+        return res.status(403).json({ message: 'Insufficient balance' });
+      }
       const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
       const id = Math.random().toString(36).slice(2,9);
       const dir: 'High'|'Low' = direction === 'Low' ? 'Low' : 'High';

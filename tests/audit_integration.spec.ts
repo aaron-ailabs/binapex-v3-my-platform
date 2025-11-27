@@ -107,6 +107,23 @@ async function run() {
   // Loss: -100.
   
   assert.ok(Math.abs(balanceDiff - expectedSettled) < 0.1, `Wallet balance update mismatch. Expected +${expectedSettled}, got ${balanceDiff}`)
+
+  // 7. Balance Check Verification (Negative Test)
+  console.log('Testing Balance Check (Insufficient Funds)...')
+  // Use admin user who hasn't deposited (expect 0 balance)
+  const walletRes = await json(`${base}/api/wallets`, { method: 'GET', headers: { ...aAuth } })
+  const adminUsd = walletRes.body.find((w: any) => w.assetName === 'USD')
+  const adminBalance = Number(adminUsd?.balanceUsd || 0)
+  
+  // Attempt trade > balance
+  const badTradeRes = await json(`${base}/api/trades`, { 
+    method: 'POST', 
+    headers: { ...aAuth, 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ ...tradeReq, amount: adminBalance + 100 }) 
+  })
+  assert.equal(badTradeRes.status, 403, 'Trade with insufficient balance should be forbidden')
+  assert.equal(badTradeRes.body.message, 'Insufficient balance', 'Error message mismatch')
+  console.log('Verified: Insufficient balance blocks trade')
   
   console.log('Audit Integration Tests Completed Successfully')
 }
