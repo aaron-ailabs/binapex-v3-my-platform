@@ -62,6 +62,29 @@ async function run() {
   }
   assert.ok(lastStatus === 429 || lastStatus === 200)
 
+  // Price alpha fallback should work without external key
+  const alpha = await json(`${base}/api/prices/alpha?symbol=BINANCE:BTCUSDT`, { method: 'GET', headers: { ...authHeaders } })
+  assert.equal(alpha.ok, true)
+  assert.equal(alpha.body.symbol, 'BINANCE:BTCUSDT')
+  assert.ok(typeof alpha.body.price === 'number')
+
+  // Invalid payout percentage (out of range) should fail validation
+  const invalidPct = await json(`${base}/api/admin/users/payout`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: tUserId, payoutPct: 150, reason: 'invalid' }) })
+  assert.equal(invalidPct.ok, false)
+  assert.equal(invalidPct.status, 400)
+
+  // Missing auth should be rejected
+  const noAuth = await json(`${base}/api/admin/users/payout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: tUserId, payoutPct: 25, reason: 'noauth' }) })
+  assert.equal(noAuth.ok, false)
+  assert.equal(noAuth.status, 401)
+
+  // Bulk update with unknown user returns ok with per-item failure
+  const bulkUnknown = await json(`${base}/api/admin/users/payout/bulk`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: [{ userId: 'unknown-id', payoutPct: 30, reason: 'bulk invalid' }] }) })
+  assert.equal(bulkUnknown.ok, true)
+  const resItems = Array.isArray(bulkUnknown.body?.results) ? bulkUnknown.body.results : []
+  assert.ok(resItems.length === 1)
+  assert.equal(resItems[0].ok, false)
+
   process.stdout.write('Payout tests completed successfully\n')
 }
 

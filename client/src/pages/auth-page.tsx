@@ -192,20 +192,7 @@ export default function AuthPage() {
                   </Button>
                 </form>
 
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                   <Button variant="outline" className="text-xs h-auto py-2 flex flex-col gap-1" onClick={() => { setEmail('trader@binapex.com'); setPassword('password'); }}>
-                      <span className="font-bold">Trader</span>
-                      <span className="text-muted-foreground font-normal text-[10px]">trader@binapex.com</span>
-                   </Button>
-                   <Button variant="outline" className="text-xs h-auto py-2 flex flex-col gap-1" onClick={() => { setEmail('admin@binapex.com'); setPassword('password'); }}>
-                      <span className="font-bold">Admin</span>
-                      <span className="text-muted-foreground font-normal text-[10px]">admin@binapex.com</span>
-                   </Button>
-                   <Button variant="outline" className="col-span-2 text-xs h-auto py-2 flex flex-col gap-1" onClick={() => { setEmail('support@binapex.com'); setPassword('password'); }}>
-                      <span className="font-bold">Customer Service</span>
-                      <span className="text-muted-foreground font-normal text-[10px]">support@binapex.com</span>
-                   </Button>
-                </div>
+                
               </TabsContent>
 
               <TabsContent value="register">
