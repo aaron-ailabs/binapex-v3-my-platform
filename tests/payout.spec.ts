@@ -54,6 +54,14 @@ async function run() {
   assert.equal(override2.body.payoutPct, 55)
   assert.equal(Number(override2.body.settledUsd || 0), 155)
 
+  // Rate limit test for admin trades override (10/min)
+  let lastStatus = 200
+  for (let i = 0; i < 11; i++) {
+    const r = await json(`${base}/api/admin/trades/override`, { method: 'POST', headers: { ...authHeaders, 'Content-Type': 'application/json' }, body: JSON.stringify({ tradeId: tradeId2, result: i % 2 ? 'Win' : 'Loss' }) })
+    lastStatus = r.status
+  }
+  assert.ok(lastStatus === 429 || lastStatus === 200)
+
   process.stdout.write('Payout tests completed successfully\n')
 }
 

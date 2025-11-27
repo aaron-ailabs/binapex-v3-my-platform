@@ -118,7 +118,7 @@ export default function LiveTrading() {
         }
       } catch {}
     })();
-  }, [apiBase, token]);
+  }, [apiBase, token, user?.id]);
 
   useEffect(() => {
     setPrice(null);

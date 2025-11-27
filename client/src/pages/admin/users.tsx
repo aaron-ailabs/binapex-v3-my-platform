@@ -241,15 +241,36 @@ export default function UserManagement() {
                 <Input inputMode="numeric" pattern="[0-9]*" placeholder="%" value={bulkPct} onChange={e => setBulkPct(e.target.value)} />
               </div>
             </div>
-            <div className="grid sm:grid-cols-3 gap-3 items-end">
-              <div className="sm:col-span-2">
-                <Label>Reason</Label>
-                <Input placeholder="Optional" value={bulkReason} onChange={e => setBulkReason(e.target.value)} />
-              </div>
-              <div>
-                <Button type="button" onClick={openConfirmBulk}>Apply to Selected</Button>
-              </div>
+          <div className="grid sm:grid-cols-3 gap-3 items-end">
+            <div className="sm:col-span-2">
+              <Label>Reason</Label>
+              <Input placeholder="Optional" value={bulkReason} onChange={e => setBulkReason(e.target.value)} />
             </div>
+            <div>
+              <Button type="button" onClick={openConfirmBulk}>Apply to Selected</Button>
+            </div>
+          </div>
+          {confirmOpen && confirmTarget && confirmTarget.ids.length > 1 && (
+            <Dialog open={confirmOpen} onOpenChange={(open) => setConfirmOpen(open)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Confirm Bulk Update</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-2 text-sm">
+                  <div>Updating {confirmTarget.ids.length} traders</div>
+                  {typeof confirmTarget.pct === 'number' ? (
+                    <div>Set percentage to {Math.round(confirmTarget.pct)}% for all selected</div>
+                  ) : (
+                    <div>Use per-row new percentage values</div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+                  <Button type="button" onClick={async () => { await applyBulk(); }}>Confirm</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
             <Table className="sm:text-sm text-xs">
               <TableHeader>
                 <TableRow>

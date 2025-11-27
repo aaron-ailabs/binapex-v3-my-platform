@@ -10,7 +10,7 @@ export default function AdminSecurity() {
   const { token } = useAuth()
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api'
   const [events, setEvents] = useState<SecEvent[]>([])
-  const [twofa, setTwofa] = useState<'enforced'|'optional'|'off'>('optional')
+  const [twofa] = useState<'enforced'|'optional'|'off'>('optional')
 
   useEffect(() => {
     ;(async () => {

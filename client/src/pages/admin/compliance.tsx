@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth'
 export default function AdminCompliance() {
   const { token } = useAuth()
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api'
-  const [audits, setAudits] = useState<{ id: string; status: string; startedAt: string }[]>([])
+  const [audits] = useState<{ id: string; status: string; startedAt: string }[]>([])
 
   useEffect(() => {
     ;(async () => {

@@ -957,7 +957,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     result: z.enum(['Win','Loss']).optional(),
     exitPrice: z.number().positive().optional()
   });
-  app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+  app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), requireRateLimit('admin-trades-override', 10, 60000), async (req: Request, res: Response) => {
     const parsed = overrideSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid override request' });
     const { tradeId, result, exitPrice } = parsed.data;
