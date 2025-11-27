@@ -1,9 +1,7 @@
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { BarChart2, Grid, SlidersHorizontal } from 'lucide-react'
-import { lazy, Suspense } from 'react'
-
-const TVWidget = lazy(() => import('@/components/tradingview-widget'))
+import TradingViewWidget from '@/components/tradingview-widget'
 
 export default function Products() {
   return (
@@ -16,9 +14,7 @@ export default function Products() {
 
         <div className="grid md:grid-cols-2 gap-8 items-start">
           <div>
-            <Suspense fallback={<div className="h-[420px] rounded-lg bg-white/5 border border-white/10" /> }>
-              <TVWidget symbol="BINANCE:BTCUSDT" theme="dark" height={420} />
-            </Suspense>
+            <TradingViewWidget symbol="BINANCE:BTCUSDT" theme="dark" height={420} />
           </div>
           <div className="space-y-6">
             <Card className="bg-white/5 border-white/10">

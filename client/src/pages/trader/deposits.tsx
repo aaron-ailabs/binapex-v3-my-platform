@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { toUSD, fmtUSD } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, FileText } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 export default function Deposits() {
   const { user } = useAuth();

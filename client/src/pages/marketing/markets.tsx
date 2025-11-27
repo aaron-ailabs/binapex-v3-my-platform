@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,9 +8,9 @@ import { apiRequest } from '@/lib/queryClient'
 export default function Markets() {
   const [fx, setFx] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
-  const pairs = ['FX:EURUSD','FX:USDJPY','FX:GBPUSD']
+  const pairs = useMemo(() => ['FX:EURUSD','FX:USDJPY','FX:GBPUSD'], [])
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     const out: Record<string, number> = {}
     for (const s of pairs) {
@@ -22,13 +22,13 @@ export default function Markets() {
     }
     setFx(out)
     setLoading(false)
-  }
+  }, [pairs])
 
   useEffect(() => {
     refresh()
     const iv = window.setInterval(refresh, 30000)
     return () => { try { window.clearInterval(iv) } catch {} }
-  }, [])
+  }, [refresh])
 
   const formatFx = (s: string, p?: number) => {
     if (typeof p !== 'number') return { price: '—', bid: '—', ask: '—', spread: '—' }

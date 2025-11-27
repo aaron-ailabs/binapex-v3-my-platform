@@ -1,10 +1,10 @@
 import { db, KYCSubmission } from '@/lib/mock-data';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useState, useEffect } from 'react';
-import { Check, X, Eye } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function KYCQueue() {

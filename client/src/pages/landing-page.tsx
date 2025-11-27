@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, lazy, Suspense, memo } from 'react';
+import { useEffect, useState, useRef, memo } from 'react';
+import TradingViewWidget from '@/components/tradingview-widget';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -9,7 +9,6 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { 
   Globe, 
   ShieldCheck, 
-  Zap, 
   Headset, 
   Star, 
   ArrowRight, 
@@ -55,16 +54,6 @@ const HERO_TICKER = [
   { label: 'EUR/USD', symbol: 'FX:EURUSD' },
 ];
 
-const CRYPTO_ASSETS = [
-  { name: "Bitcoin", symbol: "BTC", price: "$64,230.10", change: "+2.4%" },
-  { name: "Ethereum", symbol: "ETH", price: "$3,450.20", change: "+1.8%" },
-  { name: "Gold", symbol: "XAU", price: "$2,340.50", change: "+0.5%" },
-  { name: "Solana", symbol: "SOL", price: "$145.30", change: "+5.2%" },
-  { name: "Ripple", symbol: "XRP", price: "$0.62", change: "-0.1%" },
-  { name: "Cardano", symbol: "ADA", price: "$0.45", change: "+1.2%" },
-  { name: "Dogecoin", symbol: "DOGE", price: "$0.16", change: "+8.4%" },
-  { name: "Tether", symbol: "USDT", price: "$1.00", change: "0.0%" },
-];
 
 const TRUST_PILLARS = [
   { label: "Licensed Broker", value: "FSCA • MISA" },
@@ -79,23 +68,6 @@ const HERO_STATS = [
   { value: "24/7", label: "Concierge Desk" },
 ];
 
-const TRUST_QUOTES = [
-  {
-    name: "Mohd. Ikwan shah",
-    loc: "Kuala Lumpur, Malaysia",
-    text: "“Alhamdulilahh. Dapat pakai belanje bulan bulan..”"
-  },
-  {
-    name: "Syed abdul malik",
-    loc: "Sabah, Malaysia",
-    text: "“Admin fast respon..very helpful..masyukkkk”"
-  },
-  {
-    name: "Che Rozia",
-    loc: "Johor, Malaysia",
-    text: "“Alhamdulilahh. Dapat pakai belanje bulan bulan..”"
-  }
-];
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -104,15 +76,12 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [imgReady, setImgReady] = useState<Record<string, boolean>>({});
   const [chatOpen, setChatOpen] = useState(false);
-  const [fx, setFx] = useState<Record<string, number>>({});
   const [fxSpreadText, setFxSpreadText] = useState<string>('');
+  
 
   const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
   const esRef = useRef<EventSource | null>(null);
-  const tickerContainerRef = useRef<HTMLDivElement | null>(null);
-  const [prices, setPrices] = useState<Record<string, number>>({});
   const [visiblePrices, setVisiblePrices] = useState<Record<string, number>>({});
-  const tickerTimerRef = useRef<number | null>(null);
   const pricesRef = useRef<Record<string, number>>({});
 
   const HeroTicker = memo(function HeroTicker({ prices }: { prices: Record<string, number> }) {
@@ -134,17 +103,12 @@ export default function LandingPage() {
   const toProxy = (url: string) => `/api/assets/proxy?url=${encodeURIComponent(url)}`;
 
   useEffect(() => {
-    const timers: number[] = [];
     CAROUSEL_SLIDES.forEach((s) => {
-      if (imgReady[s.image]) return;
       const img = new Image();
       img.onload = () => setImgReady((prev) => ({ ...prev, [s.image]: true }));
       img.onerror = () => setImgReady((prev) => ({ ...prev, [s.image]: false }));
       img.src = toProxy(s.image);
     });
-    return () => {
-      timers.forEach((t) => window.clearTimeout(t));
-    };
   }, []);
 
   useEffect(() => {
@@ -158,7 +122,7 @@ export default function LandingPage() {
           if (typeof j?.price === 'number') out[s] = j.price;
         } catch {}
       }
-      setFx(out);
+      
       const eur = out['FX:EURUSD'];
       const jpy = out['FX:USDJPY'];
       const gbp = out['FX:GBPUSD'];
@@ -179,7 +143,7 @@ export default function LandingPage() {
     fetchFx();
     const iv = window.setInterval(fetchFx, 30000);
     return () => { try { window.clearInterval(iv); } catch {} };
-  }, []);
+  }, [apiBase]);
 
   useEffect(() => {
     let es: EventSource | null = null;
@@ -249,15 +213,13 @@ export default function LandingPage() {
     window.addEventListener('online', onOnline);
     const iv = window.setInterval(() => {
       const next: Record<string, number> = {};
-      let changed = false;
       for (const t of HERO_TICKER) {
         const v = pricesRef.current[t.symbol];
         if (typeof v === 'number') {
           next[t.symbol] = v;
-          if (!changed && visiblePrices[t.symbol] !== v) changed = true;
         }
       }
-      if (changed) setVisiblePrices(next);
+      setVisiblePrices(next);
     }, 5000);
 
     return () => {
@@ -561,9 +523,7 @@ export default function LandingPage() {
           </div>
           <div className="grid lg:grid-cols-2 gap-8 items-start">
             <div id="view-chart" className={cn(currentSlide===0 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2', 'transition-all duration-300') }>
-              <Suspense fallback={<div className="h-[420px] rounded-lg bg-white/5 border border-white/10" /> }>
-                <TVWidget symbol="BINANCE:BTCUSDT" theme="dark" height={420} />
-              </Suspense>
+              <TradingViewWidget symbol="BINANCE:BTCUSDT" theme="dark" height={420} />
             </div>
             <div className={cn(currentSlide===1 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2', 'transition-all duration-300 bg-white/5 p-8 rounded-3xl border border-white/10') } id="view-orders">
               <h3 className="text-2xl font-bold mb-6">Order Form (Simulated)</h3>
@@ -731,7 +691,7 @@ function Testimonials() {
   useEffect(() => {
     const t = window.setInterval(() => setIdx((p) => (p + 1) % list.length), 5000);
     return () => window.clearInterval(t);
-  }, []);
+  }, [list.length]);
   return (
     <div className="relative">
       <div className="overflow-hidden">
@@ -763,5 +723,3 @@ function Testimonials() {
     </div>
   );
 }
-
-const TVWidget = lazy(() => import('@/components/tradingview-widget'));

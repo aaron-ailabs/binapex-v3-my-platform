@@ -55,7 +55,7 @@ function ProtectedRoute({ component: Component, allowedRoles }: { component: Rea
 }
 
 function Router() {
-  const { user } = useAuth();
+  useAuth();
 
   return (
     <Switch>

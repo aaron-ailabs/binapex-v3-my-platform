@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useLocation } from 'wouter';
 import { ShieldCheck, ArrowLeft, Loader2, CheckCircle2 } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
@@ -41,17 +41,17 @@ export default function AuthPage() {
     }
   }, [user, setLocation]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = (e: FormEvent) => {
     e.preventDefault();
     login(email, password);
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = (e: FormEvent) => {
     e.preventDefault();
     register(regName, regEmail, regPassword, regPhone);
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmittingForgot(true);
     try {
@@ -61,7 +61,7 @@ export default function AuthPage() {
         title: "Request Sent",
         description: "If an account exists with that email, we've sent a password reset link.",
       });
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Error",

@@ -3,10 +3,9 @@ import { db, Trade, Wallet, Bonus } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import TradingViewWidget from '@/components/tradingview-widget';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Wallet as WalletIcon, TrendingUp, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Wallet as WalletIcon, TrendingUp } from 'lucide-react';
 import { toUSD, fmtUSD } from '@/lib/utils';
 import { useEffect, useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
 
 export default function TraderDashboard() {
   const { user, token } = useAuth();
@@ -18,7 +17,6 @@ export default function TraderDashboard() {
   const [creditUpdatedAt, setCreditUpdatedAt] = useState<number>(Date.now());
   const [syncStatus, setSyncStatus] = useState<'ok'|'updating'|'mismatch'|'error'>('ok');
   const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:5000/api';
-  const { toast } = useToast();
 
   useEffect(() => {
     if (user) {
@@ -59,7 +57,7 @@ export default function TraderDashboard() {
         } catch {}
       })();
     }
-  }, [user]);
+  }, [user, apiBase, token]);
 
   const fmtScore = (v: number) => {
     const d = Math.max(0, Math.min(4, Number(creditConfig.decimals || 0)))

@@ -25,7 +25,7 @@ export default function AdminSettings() {
         }
       } catch {}
     })();
-  }, []);
+  }, [apiBase, token]);
 
   const saveConfig = async () => {
     try {

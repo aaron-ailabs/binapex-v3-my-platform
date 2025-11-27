@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Transaction } from '@/lib/mock-data';
-import { CheckCircle2, Download, Printer } from 'lucide-react';
+import { CheckCircle2, Printer } from 'lucide-react';
 
 interface ReceiptModalProps {
   transaction: Transaction | null;

@@ -1,5 +1,5 @@
 import { db, User, Role, KYCStatus, MembershipTier, Bonus } from '@/lib/mock-data';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Search, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -34,7 +34,7 @@ export default function UserManagement() {
     u.email.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleUpdateUser = (e: React.FormEvent) => {
+  const handleUpdateUser = (e: FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
     const original = users.find(u => u.id === selectedUser.id);
@@ -48,7 +48,7 @@ export default function UserManagement() {
     }
   };
 
-  const handleAllocateBonus = (e: React.FormEvent) => {
+  const handleAllocateBonus = (e: FormEvent) => {
     e.preventDefault();
     if (!selectedUser || !admin) return;
     const amount = Number(bonusAmount);
@@ -87,7 +87,7 @@ export default function UserManagement() {
     db.updateUser(updated);
   };
 
-  const applyOverrideScore = async (e: React.FormEvent) => {
+  const applyOverrideScore = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedUser || !admin) return;
     if (!overrideReason.trim()) {

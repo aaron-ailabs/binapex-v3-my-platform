@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/queryClient'
 
 export default function AdminAllocations() {
-  const { user } = useAuth()
+  useAuth()
   const { toast } = useToast()
   const [target, setTarget] = useState('')
   const [amount, setAmount] = useState<number>(0)

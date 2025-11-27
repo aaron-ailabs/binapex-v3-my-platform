@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquare } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function CSDashboard() {

@@ -14,12 +14,7 @@ import {
 } from "lucide-react";
 
 const MotionDiv = dynamic(() => import("framer-motion").then(m => m.motion.div), { ssr: false });
-const MotionSpan = dynamic(() => import("framer-motion").then(m => m.motion.span), { ssr: false });
 
-export const metadata = {
-  title: "Professional Multi-Asset Trading Platform | Binapex",
-  description: "Trade Crypto, Forex, Commodities with institutional-grade tools and premium UX.",
-};
 
 export default function LandingPage() {
   const goldVars: React.CSSProperties = {
@@ -242,4 +237,3 @@ export default function LandingPage() {
     </main>
   );
 }
-

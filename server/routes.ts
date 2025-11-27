@@ -333,7 +333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       verificationCodes.delete(key);
       await storage.addSecurityEvent(userId, { type: 'password_change', timestamp: new Date(), ipAddress: ip, status: 'success', details: 'Withdrawal password set' });
       res.json({ success: true, message: 'Withdrawal password set successfully' });
-    } catch (error) {
+    } catch {
       res.status(500).json({ message: 'Internal server error' });
     }
   });
@@ -354,7 +354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       await storage.addSecurityEvent(userId, { type: 'verification', timestamp: new Date(), ipAddress: ip, status: 'success', details: 'Withdrawal password verified' });
       res.json({ success: true, message: 'Withdrawal password verified' });
-    } catch (error) {
+    } catch {
       res.status(500).json({ message: 'Internal server error' });
     }
   });
@@ -880,7 +880,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }, ms);
       res.json(t);
     });
-    return;
   });
 
   const overrideSchema = z.object({

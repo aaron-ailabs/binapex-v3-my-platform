@@ -147,7 +147,7 @@ export default function TransactionOversight() {
           <div className="grid md:grid-cols-2 gap-4 mt-4">
             <div className="space-y-2">
               <Label>Spread (bps)</Label>
-              <Input type="number" value={engine?.spreadBps ?? 0} onChange={(e) => setEngine(prev => ({ spreadBps: Number(e.target.value || 0) }))} />
+              <Input type="number" value={engine?.spreadBps ?? 0} onChange={(e) => setEngine(_prev => ({ spreadBps: Number(e.target.value || 0) }))} />
             </div>
           </div>
           <div className="flex justify-end mt-4 gap-2">

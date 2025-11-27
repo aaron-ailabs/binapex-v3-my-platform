@@ -1,6 +1,6 @@
 import { useAuth } from '@/lib/auth';
 import { db, Transaction } from '@/lib/mock-data';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,10 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { toUSD, fmtUSD } from '@/lib/utils';
+import { fmtUSD } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { AlertCircle, ArrowRight, Building2, Smartphone, Wallet, FileText } from 'lucide-react';
+import { AlertCircle, ArrowRight, Building2, Smartphone, Wallet } from 'lucide-react';
 import { ReceiptModal } from '@/components/receipt-modal';
 
 export default function Withdrawals() {
@@ -429,7 +429,7 @@ export default function Withdrawals() {
                               setReceiptOpen(true);
                             }}
                           >
-                            <FileText className="h-3 w-3" />
+                            <Wallet className="h-3 w-3" />
                           </Button>
                         )}
                       </TableCell>

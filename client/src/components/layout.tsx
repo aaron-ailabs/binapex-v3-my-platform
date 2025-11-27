@@ -18,7 +18,6 @@ import {
   CreditCard,
   Search,
   Settings,
-  ChevronRight,
   ChevronDown,
   Building2,
   FileSearch,
@@ -38,7 +37,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import {
   Collapsible,
   CollapsibleContent,

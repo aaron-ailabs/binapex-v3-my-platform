@@ -31,7 +31,7 @@ export default function ProfilePage() {
         }
       } catch {}
     })()
-  }, [])
+  }, [apiBase, token, user])
 
   const Schema = Yup.object({
     name: Yup.string().min(2).max(120).required(),
@@ -73,7 +73,7 @@ export default function ProfilePage() {
             } catch { toast({ variant: 'destructive', title: 'Network Error' }) }
             setSubmitting(false)
           }}>
-            {({ errors, touched }) => (
+            {({ errors: _errors, touched: _touched }) => (
               <Form className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Full Name</Label>
@@ -110,7 +110,7 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <Dropzone accept={{ 'image/*': [] }} maxFiles={1} maxSize={2_000_000} onDrop={(files) => setImage(files[0] || null)}>
-            {({ getRootProps, getInputProps }) => (
+            {({ getRootProps }) => (
               <div {...getRootProps()} className="border rounded-md p-4 text-sm cursor-pointer">Upload Image (Max 2MB)</div>
             )}
           </Dropzone>

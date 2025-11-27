@@ -19,14 +19,14 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      'react-refresh/only-export-components': 'off',
+      'react-hooks/exhaustive-deps': 'error',
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-empty-object-type': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unreachable': 'error',
+      'no-use-before-define': 'off',
     },
   },
   {
@@ -37,8 +37,17 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unreachable': 'error',
+      'no-use-before-define': 'off',
+    },
+  },
+  {
+    files: ['drizzle.config.ts'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: { ...globals.node },
     },
   },
 )

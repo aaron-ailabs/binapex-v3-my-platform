@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FormEvent, ChangeEvent } from 'react';
 import { Eye, EyeOff, Shield, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function Security() {
@@ -32,7 +32,7 @@ export default function Security() {
   const [verificationCode, setVerificationCode] = useState('');
   const [events, setEvents] = useState<any[]>([]);
 
-  const handlePasswordUpdate = (e: React.FormEvent) => {
+  const handlePasswordUpdate = (e: FormEvent) => {
     e.preventDefault();
     toast({ title: 'Password Updated', description: 'Your password has been changed successfully.' });
   };
@@ -51,13 +51,13 @@ export default function Security() {
     return Object.values(requirements).every(Boolean);
   };
 
-  const handleWithdrawalPasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWithdrawalPasswordChange = (e: ChangeEvent<HTMLInputElement>) => {
     const password = e.target.value;
     setWithdrawalPassword(password);
     validatePassword(password);
   };
 
-  const handleSetWithdrawalPassword = async (e: React.FormEvent) => {
+  const handleSetWithdrawalPassword = async (e: FormEvent) => {
     e.preventDefault();
     if (!validatePassword(withdrawalPassword)) {
       toast({ variant: 'destructive', title: 'Weak Password', description: 'Please meet all password requirements.' });
@@ -104,7 +104,7 @@ export default function Security() {
         .then(setEvents)
         .catch(() => {});
     }
-  }, [user]);
+  }, [user, apiBase]);
 
   return (
     <div className="space-y-6 max-w-2xl">

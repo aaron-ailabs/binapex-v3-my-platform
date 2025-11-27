@@ -1,6 +1,6 @@
 import { db } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, AlertCircle, CreditCard, ArrowUpRight } from 'lucide-react';
+import { Users, AlertCircle, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export default function AdminDashboard() {

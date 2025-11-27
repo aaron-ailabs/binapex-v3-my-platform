@@ -5,9 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Support() {
@@ -68,15 +67,15 @@ export default function Support() {
         ws.onclose = () => {
           toast({ variant: 'destructive', title: 'Chat disconnected', description: 'Please refresh to reconnect.' });
         };
-      } catch (e) {
+      } catch {
         toast({ variant: 'destructive', title: 'Chat unavailable', description: 'Please try again later.' });
       }
     }
     initSession();
     return () => { wsRef.current?.close(); };
-  }, []);
+  }, [apiBase, wsBase, toast]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
@@ -104,7 +103,7 @@ export default function Support() {
     setChatInput('');
   };
 
-  const onAttach = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onAttach = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const allowed = ['application/pdf', 'image/png', 'image/jpeg'];

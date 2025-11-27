@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowUp, ArrowDown, TrendingUp, Activity } from 'lucide-react';
 import { useRef } from 'react';
@@ -19,7 +19,7 @@ export default function LiveTrading() {
   const [alertPrice, setAlertPrice] = useState('');
   const [alertDirection, setAlertDirection] = useState('above');
 
-  const forexAssets = [
+  const forexAssets = useMemo(() => ([
     { name: 'EUR/USD', symbol: 'BLACKBULL:EURUSD' },
     { name: 'GBP/USD', symbol: 'BLACKBULL:GBPUSD' },
     { name: 'USD/JPY', symbol: 'BLACKBULL:USDJPY' },
@@ -30,9 +30,9 @@ export default function LiveTrading() {
     { name: 'USD/SGD', symbol: 'BLACKBULL:USDSGD' },
     { name: 'MYR/USD', symbol: 'FX_IDC:MYRUSD' },
     { name: 'MYR/THB', symbol: 'FX_IDC:MYRTHB' },
-  ];
+  ]), []);
  
-  const stockAssets = [
+  const stockAssets = useMemo(() => ([
     { name: 'NVIDIA', symbol: 'NASDAQ:NVDA' },
     { name: 'Tesla', symbol: 'NASDAQ:TSLA' },
     { name: 'Apple', symbol: 'NASDAQ:AAPL' },
@@ -42,9 +42,9 @@ export default function LiveTrading() {
     { name: 'Microsoft', symbol: 'NASDAQ:MSFT' },
     { name: 'Netflix', symbol: 'NASDAQ:NFLX' },
     { name: 'Alibaba', symbol: 'NYSE:BABA' },
-  ];
+  ]), []);
  
-  const commodityAssets = [ 
+  const commodityAssets = useMemo(() => ([ 
     { name: 'Gold', symbol: 'COMEX:GC1!' }, 
     { name: 'Palladium', symbol: 'NYMEX:PA1!' }, 
     { name: 'Platinum', symbol: 'NYMEX:PL1!' }, 
@@ -57,9 +57,9 @@ export default function LiveTrading() {
     { name: 'Coffee', symbol: 'ICEUS:KC1!' }, 
     { name: 'Aluminum', symbol: 'LME:ALI1!' }, 
     { name: 'Copper', symbol: 'COMEX:HG1!' }, 
-  ];
+  ]), []);
  
-  const cryptoAssets = [
+  const cryptoAssets = useMemo(() => ([
     { name: 'Bitcoin', symbol: 'BINANCE:BTCUSDT' },
     { name: 'Ethereum', symbol: 'BINANCE:ETHUSDT' },
     { name: 'Solana', symbol: 'BINANCE:SOLUSDT' },
@@ -69,7 +69,7 @@ export default function LiveTrading() {
     { name: 'Zcash', symbol: 'BINANCE:ZECUSDT' },
     { name: 'Litecoin', symbol: 'BINANCE:LTCUSDT' },
     { name: 'TRON', symbol: 'BINANCE:TRXUSDT' },
-  ];
+  ]), []);
 
   const [category, setCategory] = useState<'Forex' | 'Stocks' | 'Commodities' | 'Crypto'>('Crypto');
   const [assetName, setAssetName] = useState('Bitcoin');
@@ -88,7 +88,7 @@ export default function LiveTrading() {
       setAssetName(list[0].name);
       setAssetSymbol(list[0].symbol);
     }
-  }, [category]);
+  }, [category, assetName, forexAssets, stockAssets, commodityAssets, cryptoAssets]);
 
   useEffect(() => {
     (async () => {
