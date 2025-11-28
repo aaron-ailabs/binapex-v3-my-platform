@@ -1,36 +1,26 @@
 import { useAuth } from '@/lib/auth';
-import { db, SupportTicket } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { useState, useEffect, useRef, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Support() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const wsBase = (import.meta.env.VITE_WS_BASE as string) || 'ws://localhost:5000';
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  
   const [sessionId, setSessionId] = useState<string>('');
   const [presence, setPresence] = useState<{status: 'online'|'away'|'offline', waitTimeMins?: number}>({status:'offline'});
   const [chatInput, setChatInput] = useState('');
-  const [messages, setMessages] = useState<{sender: 'trader'|'agent'|'ai', text?: string, attachmentUrl?: string, filename?: string, mimeType?: string, timestamp: number}[]>([]);
+  const [messages, setMessages] = useState<{id?: string; sender: 'trader'|'agent'|'ai', text?: string, attachmentUrl?: string, filename?: string, mimeType?: string, timestamp: number, readBy?: string[]}[]>([]);
   const [typing, setTyping] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      // Mock fetching user tickets
-       const allTickets = db.getTickets();
-       setTickets(allTickets.filter(t => t.user_id === user.id));
-    }
-  }, [user]);
+  useEffect(() => {}, [user]);
 
   const initRef = useRef(false);
   useEffect(() => {
@@ -45,7 +35,7 @@ export default function Support() {
         const data = await res.json();
         setSessionId(data.sessionId);
         const targetWs = `${wsBase.replace(/^http/,'ws')}/ws`;
-        const ws = new WebSocket(`${targetWs}?sessionId=${data.sessionId}&role=trader`);
+        const ws = new WebSocket(`${targetWs}?sessionId=${data.sessionId}&role=trader${token ? `&token=${encodeURIComponent(token)}` : ''}`);
         wsRef.current = ws;
         ws.onmessage = (ev) => {
           try {
@@ -57,7 +47,10 @@ export default function Support() {
               setTimeout(() => setTyping(false), 1200);
             } else if (payload.type === 'message') {
               const d = payload.data;
-              setMessages((prev) => [...prev, { sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, attachmentUrl: d.attachmentId ? `${apiBase}/chat/file/${d.attachmentId}` : undefined }]);
+              setMessages((prev) => [...prev, { id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, readBy: d.readBy || [], attachmentUrl: d.attachmentId ? `${apiBase}/chat/file/${d.attachmentId}` : undefined }]);
+            } else if (payload.type === 'read') {
+              const { messageId, userId: reader } = payload.data || {};
+              setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, readBy: Array.isArray(m.readBy) ? (m.readBy!.includes(reader) ? m.readBy! : [...m.readBy!, reader]) : [reader] } : m));
             }
           } catch {}
         };
@@ -67,33 +60,21 @@ export default function Support() {
         ws.onclose = () => {
           toast({ variant: 'destructive', title: 'Chat disconnected', description: 'Please refresh to reconnect.' });
         };
+        try {
+          const h = await fetch(`${apiBase}/chat/history/${data.sessionId}`);
+          const j = await h.json();
+          const msgs = Array.isArray(j?.messages) ? j.messages : [];
+          setMessages(msgs.map((d: any) => ({ id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, readBy: d.readBy || [], attachmentUrl: d.attachmentId ? `${apiBase}/chat/file/${d.attachmentId}` : undefined })));
+        } catch {}
       } catch {
         toast({ variant: 'destructive', title: 'Chat unavailable', description: 'Please try again later.' });
       }
     }
     initSession();
     return () => { wsRef.current?.close(); };
-  }, [apiBase, wsBase, toast]);
+  }, [apiBase, wsBase, toast, token]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    const newTicket: SupportTicket = {
-       id: Math.random().toString(36).substr(2, 9),
-       user_id: user.id,
-       subject,
-       message,
-       status: 'Open',
-       created_at: new Date().toISOString()
-    };
-
-    db.addTicket(newTicket);
-    setTickets([newTicket, ...tickets]);
-    toast({ title: 'Ticket Created', description: 'Our support team will respond shortly.' });
-    setSubject('');
-    setMessage('');
-  };
+  
 
   const sendChat = () => {
     const text = chatInput.trim();
@@ -135,6 +116,19 @@ export default function Support() {
     wsRef.current?.send(JSON.stringify({ type: 'message', text: `Attachment: ${file.name}`, attachmentId: data.id }));
   };
 
+  const sendTyping = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ type: 'typing' }));
+  };
+
+  useEffect(() => {
+    if (!wsRef.current || !user) return;
+    const last = messages[messages.length - 1];
+    if (!last || last.sender === 'trader' || !last.id) return;
+    const already = Array.isArray(last.readBy) && last.readBy.includes(user.id);
+    if (!already) wsRef.current.send(JSON.stringify({ type: 'read', messageId: last.id }));
+  }, [messages, user]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
@@ -142,27 +136,7 @@ export default function Support() {
         <p className="text-muted-foreground">Need help? We are here 24/7.</p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Create New Ticket</CardTitle>
-            <CardDescription>Describe your issue in detail.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Subject</Label>
-                <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g., Deposit not showing" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Message</Label>
-                <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Provide transaction IDs if applicable..." required className="min-h-[150px]" />
-              </div>
-              <Button type="submit">Submit Ticket</Button>
-            </form>
-          </CardContent>
-        </Card>
-
+      <div className="grid lg:grid-cols-1 gap-6">
         <Card className="border-primary/30">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -179,7 +153,7 @@ export default function Support() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="h-[380px] bg-black/20 border border-white/10 rounded-xl p-4 overflow-y-auto space-y-3">
+            <div className="h-[420px] bg-black/20 border border.white/10 rounded-xl p-4 overflow-y-auto space-y-3">
               {typing && (
                 <div className="text-left">
                   <div className="inline-block px-3 py-2 rounded-2xl bg-white/10 text-white animate-pulse">Support is typing…</div>
@@ -195,13 +169,16 @@ export default function Support() {
                       </div>
                     )}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">{new Date(m.timestamp).toLocaleTimeString()}</div>
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                    {new Date(m.timestamp).toLocaleTimeString()}
+                    {m.sender === 'trader' && Array.isArray(m.readBy) && m.readBy.length > 0 ? <span title="Read"><span>✓✓</span></span> : null}
+                  </div>
                 </div>
               ))}
             </div>
             <div className="mt-2 text-xs text-muted-foreground">Session ID: <span className="font-mono">{sessionId}</span> <button className="underline" onClick={() => navigator.clipboard.writeText(sessionId)}>Copy</button></div>
             <div className="flex items-center gap-2 mt-4">
-              <Input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Type a message…" onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
+              <Input value={chatInput} onChange={(e) => { setChatInput(e.target.value); if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current); typingTimerRef.current = window.setTimeout(() => sendTyping(), 150); }} placeholder="Type a message…" onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
               <Button onClick={sendChat} className="bg-gradient-to-r from-primary to-amber-300 text-black">Send</Button>
               <Input type="file" accept="application/pdf,image/png,image/jpeg" onChange={onAttach} className="max-w-[180px]" />
             </div>

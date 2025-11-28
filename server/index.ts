@@ -2,14 +2,15 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, getPresence, registerPresenceRoutes } from "./routes";
 import { ensureSchema } from "./db";
 import { WebSocketServer } from "ws";
-import { Counter } from "prom-client";
+import { Counter, Gauge } from "prom-client";
+import crypto from 'crypto';
 import { nanoid } from "nanoid";
 import type { WebSocket } from "ws";
 import type { IncomingMessage } from "http";
 import { securityHeaders } from './security'
 import fs from 'fs'
 import path from 'path'
-import { httpRequests, httpDuration } from './metrics'
+import { httpRequests, httpDuration, registry } from './metrics'
 
 const app = express();
 
@@ -180,6 +181,7 @@ const isVercel = !!process.env.VERCEL;
 
   type Sender = "trader" | "agent" | "ai";
   type ChatMessage = {
+    id: string;
     sessionId: string;
     sender: Sender;
     text?: string;
@@ -187,6 +189,7 @@ const isVercel = !!process.env.VERCEL;
     filename?: string;
     mimeType?: string;
     timestamp: number;
+    readBy?: string[];
   };
 
   const sessions = new Map<string, Set<WebSocket>>();
@@ -203,6 +206,15 @@ const isVercel = !!process.env.VERCEL;
 
   registerPresenceRoutes(app, () => broadcastPresenceUpdate());
 
+  const chatMessagesTotal = new Counter({ name: 'chat_messages_total', help: 'Total chat messages', labelNames: ['session'] });
+  const chatTypingTotal = new Counter({ name: 'chat_typing_total', help: 'Typing events', labelNames: ['session'] });
+  const chatReadTotal = new Counter({ name: 'chat_read_total', help: 'Read receipts', labelNames: ['session'] });
+  const chatSessionsActive = new Gauge({ name: 'chat_sessions_active', help: 'Active chat sessions' });
+
+  function updateActiveSessionsGauge() {
+    try { chatSessionsActive.set(sessions.size); } catch {}
+  }
+
   function broadcast(sessionId: string, payload: ChatMessage) {
     const clients = sessions.get(sessionId);
     if (!clients) return;
@@ -214,7 +226,8 @@ const isVercel = !!process.env.VERCEL;
         ws.send(JSON.stringify({ type: "message", data: payload }));
       } catch {}
     });
-}
+    try { chatMessagesTotal.inc({ session: sessionId }); } catch {}
+  }
 
   function aiRespond(sessionId: string, userText?: string) {
     const lower = (userText || "").toLowerCase();
@@ -230,6 +243,7 @@ const isVercel = !!process.env.VERCEL;
     else if (lower.includes("human")) reply = "I’ll escalate to a human agent. Please wait; we’ll notify you.";
 
     const msg: ChatMessage = {
+      id: nanoid(12),
       sessionId,
       sender: "ai",
       text: reply,
@@ -238,20 +252,49 @@ const isVercel = !!process.env.VERCEL;
     broadcast(sessionId, msg);
   }
 
+  // Lightweight JWT verification for WS auth
+  const verifyJWT = (token: string): Record<string, any> | null => {
+    try {
+      const [h,p,s] = token.split('.');
+      if (!h || !p || !s) return null;
+      const secret = process.env.JWT_SECRET || '';
+      const sig = crypto.createHmac('sha256', secret).update(`${h}.${p}`).digest('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+      if (s !== sig) return null;
+      const payload = JSON.parse(Buffer.from(p.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'));
+      if (typeof payload.exp === 'number' && Math.floor(Date.now()/1000) > payload.exp) return null;
+      return payload;
+    } catch { return null; }
+  };
+
   if (!isVercel)
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const url = new URL(req.url || "", `http://${req.headers.host}`);
     const sessionId = url.searchParams.get("sessionId") || "default";
     const role = (url.searchParams.get("role") || "trader") as Sender;
+    const token = String(url.searchParams.get('token') || '');
+    let userId = 'anonymous';
+    const payload = token ? verifyJWT(token) : null;
+    if (payload) {
+      userId = String(payload.sub || 'unknown');
+      const r = String(payload.role || '').toLowerCase();
+      const want = String(role).toLowerCase();
+      const ok = (want === 'agent' && (r === 'customer service' || r === 'admin')) || (want === 'trader' && (r === 'trader' || r === 'admin'));
+      if (!ok) {
+        try { ws.close(1008, 'Unauthorized'); } catch {}
+        return;
+      }
+    }
 
     if (!sessions.has(sessionId)) sessions.set(sessionId, new Set());
     sessions.get(sessionId)!.add(ws);
+    updateActiveSessionsGauge();
 
     ws.on("message", (raw) => {
       let parsed: any = {};
       try { parsed = JSON.parse(raw.toString()); } catch {}
       if (parsed?.type === "message") {
         const payload: ChatMessage = {
+          id: nanoid(12),
           sessionId,
           sender: role,
           text: parsed.text,
@@ -263,6 +306,23 @@ const isVercel = !!process.env.VERCEL;
         if (getPresence().status === "offline") {
           setTimeout(() => aiRespond(sessionId, parsed.text), 600);
         }
+      } else if (parsed?.type === 'typing') {
+        const evt = { type: 'typing', data: { sender: role, sessionId } };
+        const clients = sessions.get(sessionId);
+        if (clients) clients.forEach((c) => { try { c.send(JSON.stringify(evt)); } catch {} });
+        try { chatTypingTotal.inc({ session: sessionId }); } catch {}
+      } else if (parsed?.type === 'read') {
+        const msgId = String(parsed.messageId || '');
+        const list = transcripts.get(sessionId) || [];
+        const m = list.find((x) => x.id === msgId);
+        if (m) {
+          m.readBy = Array.isArray(m.readBy) ? m.readBy : [];
+          if (!m.readBy.includes(userId)) m.readBy.push(userId);
+          transcripts.set(sessionId, list);
+        }
+        const clients = sessions.get(sessionId);
+        if (clients) clients.forEach((c) => { try { c.send(JSON.stringify({ type: 'read', data: { messageId: msgId, userId } })); } catch {} });
+        try { chatReadTotal.inc({ session: sessionId }); } catch {}
       }
     });
 
@@ -272,6 +332,7 @@ const isVercel = !!process.env.VERCEL;
         set.delete(ws);
         if (set.size === 0) sessions.delete(sessionId);
       }
+      updateActiveSessionsGauge();
     });
 
     // greet & presence info
@@ -279,10 +340,26 @@ const isVercel = !!process.env.VERCEL;
     ws.send(JSON.stringify({ type: "presence", data: getPresence() }));
   });
 
+  // Metrics endpoint for Prometheus
+  app.get('/metrics', async (_req: Request, res: Response) => {
+    try {
+      res.setHeader('Content-Type', registry.contentType);
+      res.end(await registry.metrics());
+    } catch {
+      res.status(500).end();
+    }
+  });
+
   // Chat history endpoint for moderation and session persistence
   app.get('/api/chat/history/:sessionId', (req: Request, res: Response) => {
     const id = req.params.sessionId;
     res.json({ messages: transcripts.get(id) || [] });
+  });
+
+  // List active chat sessions for agent dashboard
+  app.get('/api/chat/sessions', (_req: Request, res: Response) => {
+    const items = Array.from(sessions.keys()).map((id) => ({ id, participants: (sessions.get(id)?.size || 0) }));
+    res.json({ items });
   });
 })();
 

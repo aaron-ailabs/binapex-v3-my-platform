@@ -227,7 +227,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   const csLinks = [
-    { href: '/cs', label: 'Ticket Queue', icon: Headset },
+    { href: '/cs', label: 'Live Chat', icon: Headset },
     { href: '/cs/lookup', label: 'User Lookup', icon: Search },
   ];
 
