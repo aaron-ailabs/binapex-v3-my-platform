@@ -134,6 +134,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const requireCsrf = (req: Request, res: Response, next: NextFunction) => {
     const env = (process.env.NODE_ENV || '').toLowerCase();
     if (env === 'development') return next();
+    const skipForLogin = String(process.env.ALLOW_LOGIN_WITHOUT_CSRF || '') === '1' && (req.path === '/api/auth/login' || req.originalUrl.startsWith('/api/auth/login'))
+    if (skipForLogin) return next();
     const hdr = String(req.headers['x-csrf-token'] || '');
     const cookieStr = String(req.headers.cookie || '');
     const cookieVal = (() => {
@@ -256,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: 'Password reset successfully' });
   });
 
-  app.post('/api/auth/login', requireRateLimit('login', 5, 60000), enforceTLS, requireCsrf, async (req: Request, res: Response) => {
+  app.post('/api/auth/login', (String(process.env.DISABLE_LOGIN_RATE_LIMIT || '') === '1' ? ((req: Request, _res: Response, next: NextFunction) => next()) : requireRateLimit('login', 5, 60000)), enforceTLS, requireCsrf, async (req: Request, res: Response) => {
     const parsed = loginSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid credentials format' });
     const { username: u, password: p } = parsed.data;

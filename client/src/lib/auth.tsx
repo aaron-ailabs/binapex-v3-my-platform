@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const found = db.getUsers().find(u => u.id === storedUserId);
       if (found) setUser(found);
     }
-    if (storedToken) setToken(storedToken);anig
+    if (storedToken) setToken(storedToken);
     setIsLoading(false);
   }, []);
 
