@@ -1,4 +1,5 @@
 import { useAuth } from '@/lib/auth';
+import { createClient } from '@supabase/supabase-js'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,9 @@ export default function Support() {
   const { toast } = useToast();
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const wsEnv = (import.meta.env.VITE_WS_BASE as string) || '';
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
+  const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
+  const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null
   
   const [sessionId, setSessionId] = useState<string>('');
   const [presence, setPresence] = useState<{status: 'online'|'away'|'offline', waitTimeMins?: number}>({status:'offline'});
@@ -18,7 +22,8 @@ export default function Support() {
   const [messages, setMessages] = useState<{id?: string; sender: 'trader'|'agent'|'ai', text?: string, attachmentUrl?: string, filename?: string, mimeType?: string, timestamp: number, readBy?: string[]}[]>([]);
   const [typing, setTyping] = useState<boolean>(false);
   const [httpMode, setHttpMode] = useState<boolean>(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const presenceChannelRef = useRef<any>(null)
+  const chatChannelRef = useRef<any>(null)
   const typingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {}, [user]);
@@ -35,37 +40,39 @@ export default function Support() {
         const res = await fetch(`${apiBase}/support/session`, { method: 'POST' });
         const data = await res.json();
         setSessionId(data.sessionId);
-        const scheme = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss' : 'ws';
-        const host = (typeof location !== 'undefined' && location.host) ? location.host : 'localhost:5000';
-        const base = wsEnv ? wsEnv.replace(/^http/,'ws') : `${scheme}://${host}`;
-        const targetWs = `${base}${base.endsWith('/ws') ? '' : '/ws'}`;
-        const ws = new WebSocket(`${targetWs}?sessionId=${data.sessionId}&role=trader${token ? `&token=${encodeURIComponent(token)}` : ''}`);
-        wsRef.current = ws;
-        ws.onmessage = (ev) => {
+        if (supabase) {
           try {
-            const payload = JSON.parse(ev.data);
-            if (payload.type === 'presence') {
-              setPresence(payload.data);
-            } else if (payload.type === 'typing') {
-              setTyping(true);
-              setTimeout(() => setTyping(false), 1200);
-            } else if (payload.type === 'message') {
-              const d = payload.data;
-              setMessages((prev) => [...prev, { id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, readBy: d.readBy || [], attachmentUrl: d.attachmentId ? `${apiBase}/chat/file/${d.attachmentId}` : undefined }]);
-            } else if (payload.type === 'read') {
-              const { messageId, userId: reader } = payload.data || {};
-              setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, readBy: Array.isArray(m.readBy) ? (m.readBy!.includes(reader) ? m.readBy! : [...m.readBy!, reader]) : [reader] } : m));
-            }
-          } catch {}
-        };
-        ws.onopen = () => {
-          setHttpMode(false);
-          setMessages((prev) => [...prev, { sender: 'ai', text: 'Welcome to Binapex Support. How can we help?', timestamp: Date.now() }]);
-        };
-        ws.onclose = () => {
-          setHttpMode(true);
-          toast({ variant: 'destructive', title: 'Realtime chat unavailable', description: 'Switched to fallback messaging.' });
-        };
+            const presenceCh = supabase.channel('presence')
+            presenceCh.on('broadcast', { event: 'presence' }, (payload) => {
+              setPresence(payload.payload)
+            })
+            await presenceCh.subscribe()
+            presenceChannelRef.current = presenceCh
+
+            const chatCh = supabase.channel(`chat:${data.sessionId}`)
+            chatCh.on('broadcast', { event: 'typing' }, () => {
+              setTyping(true)
+              setTimeout(() => setTyping(false), 1200)
+            })
+            chatCh.on('broadcast', { event: 'message' }, (payload) => {
+              const d: any = payload.payload || {}
+              setMessages((prev) => [...prev, { id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, filename: d.filename, mimeType: d.mimeType, readBy: d.readBy || [], attachmentUrl: d.attachmentId ? `${apiBase}/chat/file/${d.attachmentId}` : undefined }])
+            })
+            chatCh.on('broadcast', { event: 'read' }, (payload) => {
+              const { messageId, userId: reader } = (payload.payload || {})
+              setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, readBy: Array.isArray(m.readBy) ? (m.readBy!.includes(reader) ? m.readBy! : [...m.readBy!, reader]) : [reader] } : m))
+            })
+            await chatCh.subscribe()
+            chatChannelRef.current = chatCh
+            setHttpMode(false)
+            setMessages((prev) => [...prev, { sender: 'ai', text: 'Welcome to Binapex Support. How can we help?', timestamp: Date.now() }])
+          } catch {
+            setHttpMode(true)
+            toast({ variant: 'destructive', title: 'Realtime chat unavailable', description: 'Switched to fallback messaging.' })
+          }
+        } else {
+          setHttpMode(true)
+        }
         try {
           const h = await fetch(`${apiBase}/chat/history/${data.sessionId}`);
           const j = await h.json();
@@ -77,8 +84,11 @@ export default function Support() {
       }
     }
     initSession();
-    return () => { wsRef.current?.close(); };
-  }, [apiBase, wsEnv, toast, token]);
+    return () => {
+      try { presenceChannelRef.current?.unsubscribe() } catch {}
+      try { chatChannelRef.current?.unsubscribe() } catch {}
+    };
+  }, [apiBase, wsEnv, toast, token, supabase]);
 
   
 
@@ -88,18 +98,10 @@ export default function Support() {
     const now = Date.now();
     setMessages((prev) => [...prev, { sender: 'trader', text, timestamp: now }]);
     setChatInput('');
-    if (!httpMode && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'message', text }));
-      return;
-    }
     (async () => {
       try {
         const r = await fetch(`${apiBase}/support/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, text }) });
-        if (r.ok) {
-          const j = await r.json();
-          const reply = String(j.reply || 'Thank you. An agent will assist you shortly.');
-          setMessages((prev) => [...prev, { sender: 'ai', text: reply, timestamp: Date.now() }]);
-        }
+        if (!r.ok) return;
       } catch {}
     })();
   };
@@ -133,21 +135,24 @@ export default function Support() {
     const data = await res.json();
     const attachmentUrl = data.url;
     setMessages((prev) => [...prev, { sender: 'trader', text: 'Attachment sent', filename: file.name, mimeType: file.type, attachmentUrl, timestamp: Date.now() }]);
-    wsRef.current?.send(JSON.stringify({ type: 'message', text: `Attachment: ${file.name}`, attachmentId: data.id }));
+    try {
+      chatChannelRef.current?.send({ type: 'broadcast', event: 'message', payload: { sender: 'trader', sessionId, text: `Attachment: ${file.name}`, attachmentId: data.id, filename: file.name, mimeType: file.type, timestamp: Date.now() } })
+    } catch {}
   };
 
   const sendTyping = () => {
     if (httpMode) return;
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: 'typing' }));
+    try { chatChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { sender: 'trader', sessionId } }) } catch {}
   };
 
   useEffect(() => {
-    if (httpMode || !wsRef.current || !user) return;
+    if (httpMode || !user) return;
     const last = messages[messages.length - 1];
     if (!last || last.sender === 'trader' || !last.id) return;
     const already = Array.isArray(last.readBy) && last.readBy.includes(user.id);
-    if (!already) wsRef.current.send(JSON.stringify({ type: 'read', messageId: last.id }));
+    if (!already) {
+      try { chatChannelRef.current?.send({ type: 'broadcast', event: 'read', payload: { messageId: last.id, userId: user.id } }) } catch {}
+    }
   }, [messages, user, httpMode]);
 
   if (!user || user.role !== 'Trader') {

@@ -4,16 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useEffect, useRef, useState } from 'react';
+import { createClient } from '@supabase/supabase-js'
 import { useToast } from '@/hooks/use-toast';
 
 export default function CSDashboard() {
   const { toast } = useToast();
-  const { token } = useAuth();
+  useAuth();
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
+  const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
+  const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null
   const [presence, setPresence] = useState<{status: 'online'|'away'|'offline', waitTimeMins?: number}>({status:'offline'});
   const [sessionId, setSessionId] = useState<string>('');
   const [messages, setMessages] = useState<{id?: string; sender: 'trader'|'agent'|'ai', text?: string, timestamp: number, readBy?: string[]}[]>([]);
   const [chatInput, setChatInput] = useState('');
-  const wsRef = useRef<WebSocket | null>(null);
+  const chatChannelRef = useRef<any>(null)
+  const presenceChannelRef = useRef<any>(null)
   const [sessions, setSessions] = useState<{ id: string; participants: number }[]>([]);
   const typingTimerRef = useRef<number | null>(null);
 
@@ -28,7 +33,7 @@ export default function CSDashboard() {
     loadSessions();
     const t = setInterval(loadSessions, 3000);
     return () => clearInterval(t);
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     async function loadPresence() {
@@ -38,7 +43,17 @@ export default function CSDashboard() {
       } catch {}
     }
     loadPresence();
-  }, []);
+    if (supabase) {
+      try {
+        const ch = supabase.channel('presence')
+        ch.on('broadcast', { event: 'presence' }, (payload) => {
+          setPresence(payload.payload)
+        })
+        ch.subscribe()
+        presenceChannelRef.current = ch
+      } catch {}
+    }
+  }, [supabase]);
 
   
 
@@ -61,42 +76,36 @@ export default function CSDashboard() {
   const joinSession = () => {
     if (!sessionId) return;
     try {
-      const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?sessionId=${encodeURIComponent(sessionId)}&role=agent${token ? `&token=${encodeURIComponent(token)}` : ''}`);
-      wsRef.current = ws;
-      ws.onmessage = (ev) => {
-        try {
-          const payload = JSON.parse(ev.data);
-          if (payload.type === 'message') {
-            const d = payload.data;
-            setMessages((prev) => [...prev, { id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, readBy: d.readBy || [] }]);
-          } else if (payload.type === 'read') {
-            const { messageId, userId: reader } = payload.data || {};
-            setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, readBy: Array.isArray(m.readBy) ? (m.readBy!.includes(reader) ? m.readBy! : [...m.readBy!, reader]) : [reader] } : m));
-          } else if (payload.type === 'typing') {
-            // Optional: show trader typing indicator (could add UI badge)
-          }
-        } catch {}
-      };
-      ws.onopen = () => {
-        toast({ title: 'Joined Session', description: `Session ${sessionId}` });
-      };
-      ws.onclose = () => {
-        toast({ variant: 'destructive', title: 'Disconnected', description: 'Session closed' });
-      };
+      if (!supabase) {
+        toast({ variant: 'destructive', title: 'Realtime unavailable', description: 'Supabase not configured' })
+        return
+      }
+      const ch = supabase.channel(`chat:${sessionId}`)
+      ch.on('broadcast', { event: 'message' }, (payload) => {
+        const d: any = payload.payload || {}
+        setMessages((prev) => [...prev, { id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, readBy: d.readBy || [] }])
+      })
+      ch.on('broadcast', { event: 'read' }, (payload) => {
+        const { messageId, userId: reader } = (payload.payload || {})
+        setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, readBy: Array.isArray(m.readBy) ? (m.readBy!.includes(reader) ? m.readBy! : [...m.readBy!, reader]) : [reader] } : m))
+      })
+      ch.on('broadcast', { event: 'typing' }, () => { /* optional typing indicator for agent */ })
+      ch.subscribe()
+      chatChannelRef.current = ch
+      toast({ title: 'Joined Session', description: `Session ${sessionId}` })
     } catch {}
   };
 
   const sendChat = () => {
     const text = chatInput.trim();
-    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: 'message', text }));
+    if (!text) return;
+    try { chatChannelRef.current?.send({ type: 'broadcast', event: 'message', payload: { sender: 'agent', sessionId, text, timestamp: Date.now() } }) } catch {}
     setMessages((prev) => [...prev, { sender: 'agent', text, timestamp: Date.now() }]);
     setChatInput('');
   };
 
   const sendTyping = () => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: 'typing' }));
+    try { chatChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { sender: 'agent', sessionId } }) } catch {}
   };
 
   return (

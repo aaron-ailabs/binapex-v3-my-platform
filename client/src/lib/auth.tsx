@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const found = db.getUsers().find(u => u.id === storedUserId);
       if (found) setUser(found);
     }
-    if (storedToken) setToken(storedToken);
+    if (storedToken) setToken(storedToken);anig
     setIsLoading(false);
   }, []);
 
@@ -37,18 +37,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
     const uname = email.toLowerCase();
     try {
-      fetch(`${apiBase}/csrf`, { method: 'GET' }).catch(() => {});
-      const xsrf = (() => {
-        try {
-          const m = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
-          return m ? decodeURIComponent(m.split('=')[1] || '') : '';
-        } catch { return ''; }
-      })();
-      fetch(`${apiBase}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(xsrf ? { 'X-CSRF-Token': xsrf } : {}) },
-        body: JSON.stringify({ username: uname, password: password || 'password' })
-      }).then(async (r) => {
+      (async () => {
+        try { await fetch(`${apiBase}/csrf`, { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin' }); } catch {}
+        const xsrf = (() => {
+          try {
+            const m = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
+            return m ? decodeURIComponent(m.split('=')[1] || '') : '';
+          } catch { return ''; }
+        })();
+        fetch(`${apiBase}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(xsrf ? { 'X-CSRF-Token': xsrf } : {}) },
+          body: JSON.stringify({ username: uname, password: password || 'password' })
+        }).then(async (r) => {
         let data: any = null;
         try { data = await r.json(); } catch {}
         if (!r.ok || !data?.token) {
@@ -75,9 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (role === 'Admin') setLocation('/admin');
         else if (role === 'Customer Service') setLocation('/cs');
         else setLocation('/dashboard');
-      }).catch(() => {
-        toast({ variant: "destructive", title: "Network Error", description: "Unable to login." });
-      });
+        }).catch(() => {
+          toast({ variant: "destructive", title: "Network Error", description: "Unable to login." });
+        });
+      })();
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Login failed." });
       return false;

@@ -7,7 +7,8 @@ import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPass
 import { z } from 'zod';
 import { registry, tradeExecutionDuration, loginAttempts } from './metrics';
 import { db, sb, hasSupabase } from './db';
-import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits, chatSessions as tblChatSessions } from '@shared/schema';
+import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits, chatSessions as tblChatSessions, chatMessages as tblChatMessages } from '@shared/schema';
+import { nanoid } from 'nanoid'
 import * as speakeasy from "speakeasy";
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
 import Redis from 'ioredis';
@@ -133,10 +134,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const requireCsrf = (req: Request, res: Response, next: NextFunction) => {
     const env = (process.env.NODE_ENV || '').toLowerCase();
     if (env === 'development') return next();
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const expected = csrfTokens.get(ip) || '';
-    const actual = String(req.headers['x-csrf-token'] || '');
-    if (!expected || actual !== expected) return res.status(403).json({ message: 'Invalid CSRF token' });
+    const hdr = String(req.headers['x-csrf-token'] || '');
+    const cookieStr = String(req.headers.cookie || '');
+    const cookieVal = (() => {
+      try {
+        const m = cookieStr.split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
+        return m ? decodeURIComponent(m.split('=')[1] || '') : '';
+      } catch { return ''; }
+    })();
+    if (!hdr || !cookieVal || hdr !== cookieVal) return res.status(403).json({ message: 'Invalid CSRF token' });
     next();
   };
   app.get('/api/csrf', enforceTLS, (req: Request, res: Response) => {
@@ -464,6 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const parsed = supportMessageSchema.safeParse(req.body || {});
       if (!parsed.success) return res.status(400).json({ message: 'Invalid message payload' });
+      const sessionId = String(parsed.data.sessionId || 'default');
       const text = parsed.data.text.trim();
       const lower = text.toLowerCase();
       let reply = "I’m your Binapex AI Assistant. How can I help today?";
@@ -471,6 +478,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       else if (lower.includes("deposit") || lower.includes("fund")) reply = "For deposits, use Deposits page and follow funding instructions.";
       else if (lower.includes("withdraw")) reply = "Withdrawals require verified KYC and 24h review for large amounts.";
       else if (lower.includes("human")) reply = "I’ll escalate to a human agent. Please wait; we’ll notify you.";
+
+      try {
+        const traderId = nanoid(12);
+        if (db) {
+          try { await (db as any).insert(tblChatMessages).values({ id: traderId, sessionId, sender: 'trader', text, timestamp: new Date(), readBy: '' }); } catch {}
+        }
+        if (hasSupabase && sb) {
+          try {
+            const ch = ensureChannel(`chat:${sessionId}`);
+            if (ch) {
+              await ch.send({ type: 'broadcast', event: 'typing', payload: { sender: 'agent', sessionId } });
+              await ch.send({ type: 'broadcast', event: 'message', payload: { id: traderId, sessionId, sender: 'trader', text, timestamp: Date.now() } });
+            }
+          } catch {}
+        }
+
+        const aiId = nanoid(12);
+        if (db) {
+          try { await (db as any).insert(tblChatMessages).values({ id: aiId, sessionId, sender: 'ai', text: reply, timestamp: new Date(), readBy: '' }); } catch {}
+        }
+        if (hasSupabase && sb) {
+          try {
+            const ch = ensureChannel(`chat:${sessionId}`);
+            if (ch) {
+              await ch.send({ type: 'broadcast', event: 'message', payload: { id: aiId, sessionId, sender: 'ai', text: reply, timestamp: Date.now() } });
+            }
+          } catch {}
+        }
+      } catch {}
       res.json({ ok: true, reply });
     } catch {
       res.status(500).json({ message: 'Internal server error' });
@@ -644,7 +680,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const engineSchema = z.object({
     spreadBps: z.number().int().min(0).max(10000).optional()
   });
-  app.post('/api/engine', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+  app.post('/api/engine', requireAuth, requireRole(['Admin']), requireRateLimit('admin-engine-update', 10, 60000), enforceTLS, async (req: Request, res: Response) => {
     const parsed = engineSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid engine configuration' });
     const { spreadBps } = parsed.data;
@@ -657,7 +693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const userPayoutSchema = z.object({ userId: z.string().min(3).max(64), payoutPct: z.number().int().min(0).max(100), reason: z.string().min(3).max(300).optional() });
-  app.post('/api/admin/users/payout', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-payout', 10, 60000), async (req: Request, res: Response) => {
+  app.post('/api/admin/users/payout', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-payout', 10, 60000), enforceTLS, async (req: Request, res: Response) => {
     const parsed = userPayoutSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid user payout data' });
     const { userId, payoutPct } = parsed.data;
@@ -677,7 +713,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const bulkUserPayoutSchema = z.object({ items: z.array(z.object({ userId: z.string().min(3).max(64), payoutPct: z.number().int().min(0).max(100), reason: z.string().min(3).max(300).optional() })).min(1).max(500) });
-  app.post('/api/admin/users/payout/bulk', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-payout-bulk', 5, 60000), async (req: Request, res: Response) => {
+  app.post('/api/admin/users/payout/bulk', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-payout-bulk', 5, 60000), enforceTLS, async (req: Request, res: Response) => {
     const parsed = bulkUserPayoutSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid bulk payload' });
     const items = parsed.data.items;
@@ -1108,7 +1144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     result: z.enum(['Win','Loss']).optional(),
     exitPrice: z.number().positive().optional()
   });
-  app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), requireRateLimit('admin-trades-override', 10, 60000), async (req: Request, res: Response) => {
+  app.post('/api/admin/trades/override', requireAuth, requireRole(['Admin']), requireRateLimit('admin-trades-override', 10, 60000), enforceTLS, async (req: Request, res: Response) => {
     const parsed = overrideSchema.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: 'Invalid override request' });
     const { tradeId, result, exitPrice } = parsed.data;
@@ -1880,6 +1916,30 @@ export function registerPresenceRoutes(app: Express, onUpdate?: (p: Presence) =>
     setPresence({ status, waitTimeMins });
     const p = getPresence();
     if (onUpdate) try { onUpdate(p); } catch {}
+    if (hasSupabase && sb) {
+      try {
+        const ch = ensureChannel('presence');
+        if (ch) {
+          ch.send({ type: 'broadcast', event: 'presence', payload: p }).catch(() => {});
+        }
+      } catch {}
+    }
     res.json(p);
   });
+}
+
+const channelCache = new Map<string, any>();
+function ensureChannel(name: string) {
+  if (!hasSupabase || !sb) return null as any;
+  let ch = channelCache.get(name);
+  if (!ch) {
+    try {
+      ch = (sb as any).channel(name);
+      channelCache.set(name, ch);
+      ch.subscribe().catch(() => {});
+    } catch {
+      ch = null;
+    }
+  }
+  return ch;
 }
