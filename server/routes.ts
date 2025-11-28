@@ -263,6 +263,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ token, role: user.role, userId: user.id });
   });
 
+  const registerSchema = z.object({ email: z.string().email(), password: z.string().min(8).max(256) });
+  app.post('/api/auth/register', requireRateLimit('register', 5, 60000), enforceTLS, async (req: Request, res: Response) => {
+    const parsed = registerSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid registration data' });
+    const username = String(parsed.data.email).toLowerCase();
+    const existing = await storage.getUserByUsername(username);
+    if (existing) return res.status(409).json({ message: 'Email already in use' });
+    const created = await storage.createUser({ username, password: parsed.data.password } as any);
+    try { await ensureUsdWallet(created.id); } catch {}
+    const token = signJWT({ sub: created.id, role: created.role, username: created.username });
+    res.json({ token, role: created.role, userId: created.id });
+  });
+
   app.get('/api/auth/verify', requireAuth, (req: Request, res: Response) => {
     res.json((req as any).user);
   });
@@ -654,6 +667,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       results.push({ userId: it.userId, payoutPct: pct, ok: true });
     }
     res.json({ ok: true, results });
+  });
+
+  app.get('/api/admin/users', requireAuth, requireRole(['Admin']), async (req: Request, res: Response) => {
+    const qRaw = (req.query as any).q;
+    const q = typeof qRaw === 'string' ? qRaw : '';
+    const list = await storage.listUsers(q || undefined, 1000);
+    const out = list.map(u => ({ id: u.id, username: u.username, role: u.role, kycStatus: u.kycStatus, membershipTier: u.membershipTier, payoutPct: typeof u.payoutPct === 'number' ? u.payoutPct : 85 }));
+    res.json(out);
   });
 
   const ALPHA_KEY = process.env.ALPHAVANTAGE_API_KEY || '';

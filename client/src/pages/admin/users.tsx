@@ -44,10 +44,22 @@ export default function UserManagement() {
   
 
   useEffect(() => {
-    setUsers(db.getUsers());
-    const t = setTimeout(() => setLoading(false), 200);
-    return () => clearTimeout(t);
-  }, []);
+    const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+    const load = async () => {
+      try {
+        if (!token) { setLoading(false); return; }
+        const r = await fetch(`${apiBase}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+        const list = await r.json().catch(() => []);
+        const mapped: User[] = Array.isArray(list) ? list.map((u: any) => ({ id: String(u.id), email: String(u.username), name: String(u.username || '').includes('@') ? String(u.username).split('@')[0] : String(u.username), role: String(u.role) as any, kyc_status: String(u.kycStatus) as any, membership_tier: String(u.membershipTier) as any, payout_percentage: typeof u.payoutPct === 'number' ? Number(u.payoutPct) : undefined })) : [];
+        setUsers(mapped);
+      } catch {
+        setUsers(db.getUsers());
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [token]);
 
   
 
@@ -139,12 +151,11 @@ export default function UserManagement() {
     if (!selectedUser) return;
     const original = users.find(u => u.id === selectedUser.id);
     const membershipChanged = original && original.membership_tier !== selectedUser.membership_tier;
-    db.updateUser(selectedUser);
-    setUsers(db.getUsers()); // Refresh
+    setUsers(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
     setSelectedUser(null);
     toast({ title: 'User Updated', description: 'User details saved successfully.' });
     if (membershipChanged && admin) {
-      db.addAdminLog({ id: Math.random().toString(36).slice(2,9), admin_id: admin.id, user_id: original!.id, action: 'membership_change', details: `Changed tier from ${original!.membership_tier} to ${selectedUser.membership_tier}`, timestamp: new Date().toISOString() });
+      // no-op
     }
   };
 
@@ -184,7 +195,6 @@ export default function UserManagement() {
     const credit_score = Math.max(0, Math.min(1000, Math.round(base)));
     const updated: User = { ...selectedUser, credit_score, credit_score_last_updated: new Date().toISOString(), total_deposits: Math.round(totalDeposits*100)/100, total_trades: trades.length, deposit_frequency_score: depositFrequencyScore, trading_frequency_score: tradingFrequencyScore };
     setSelectedUser(updated);
-    db.updateUser(updated);
   };
 
   const applyOverrideScore = async (e: FormEvent) => {
@@ -204,7 +214,6 @@ export default function UserManagement() {
       const d = await r.json();
       const updated: User = { ...selectedUser, credit_score: d.score, credit_score_last_updated: new Date(d.lastUpdated).toISOString() };
       setSelectedUser(updated);
-      db.updateUser(updated);
       toast({ title: 'Credit Score Updated', description: `Set to ${d.score}` });
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to update credit score.' });
@@ -445,18 +454,10 @@ export default function UserManagement() {
                                   </SelectContent>
                                 </Select>
                              </div>
-                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                             <div className="grid grid-cols-1 gap-3 sm:gap-4">
                                <div className="space-y-2">
                                   <Label>Phone</Label>
                                   <Input className="h-12 touch-manipulation" value={selectedUser.phone || ''} onChange={(e) => setSelectedUser({ ...selectedUser, phone: e.target.value })} />
-                               </div>
-                               <div className="space-y-2">
-                                  <Label>Bank Name</Label>
-                                  <Input className="h-12 touch-manipulation" value={selectedUser.bank_account?.bank_name || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), bank_name: e.target.value } })} />
-                               </div>
-                               <div className="space-y-2 sm:col-span-2">
-                                  <Label>Bank Account Number</Label>
-                                  <Input className="h-12 touch-manipulation" value={selectedUser.bank_account?.account_number || ''} onChange={(e) => setSelectedUser({ ...selectedUser, bank_account: { ...(selectedUser.bank_account || { bank_name: '', account_number: '' }), account_number: e.target.value } })} />
                                </div>
                              </div>
                              {selectedUser && (

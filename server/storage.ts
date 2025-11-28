@@ -36,6 +36,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<SecureUser | undefined>;
   createUser(user: InsertUser): Promise<SecureUser>;
   updateUser(id: string, updates: Partial<SecureUser>): Promise<SecureUser | undefined>;
+  listUsers(search?: string, limit?: number): Promise<SecureUser[]>;
   setWithdrawalPassword(userId: string, password: string): Promise<boolean>;
   verifyWithdrawalPassword(userId: string, password: string): Promise<boolean>;
   addSecurityEvent(userId: string, event: Omit<SecurityEvent, 'id'>): Promise<void>;
@@ -110,6 +111,12 @@ export class MemStorage implements IStorage {
     const next: SecureUser = { ...current, ...updates } as SecureUser;
     this.users.set(id, next);
     return next;
+  }
+
+  async listUsers(search?: string, limit: number = 500): Promise<SecureUser[]> {
+    const all = Array.from(this.users.values());
+    const filtered = search ? all.filter(u => String(u.username || '').toLowerCase().includes(search.toLowerCase())) : all;
+    return filtered.slice(0, Math.max(0, limit));
   }
 
   async setWithdrawalPassword(userId: string, password: string): Promise<boolean> {
@@ -208,6 +215,15 @@ export class PgStorage implements IStorage {
     const hashed = hashPassword(insertUser.password)
     const [row] = await db.insert(users).values({ username: insertUser.username, password: hashed }).returning()
     return { ...row }
+  }
+  async listUsers(search?: string, limit: number = 500): Promise<SecureUser[]> {
+    if (!db) return []
+    if (search && search.trim()) {
+      const rows = await db.select().from(users).where(eq(users.username, search)).limit(limit)
+      return rows as any
+    }
+    const rows = await db.select().from(users).limit(limit)
+    return rows as any
   }
   async updateUser(id: string, updates: Partial<SecureUser>): Promise<SecureUser | undefined> {
     if (!db) return undefined

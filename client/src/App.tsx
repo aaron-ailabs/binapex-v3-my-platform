@@ -25,6 +25,7 @@ import AdminBanks from "@/pages/admin/banks";
 import AdminTrading from "@/pages/admin/trading";
 import AdminAudit from "@/pages/admin/audit";
 import AdminSettings from "@/pages/admin/settings";
+import FundingSettings from "@/pages/admin/funding";
 import Markets from "@/pages/marketing/markets";
 import Products from "@/pages/marketing/products";
 import Institutional from "@/pages/marketing/institutional";
@@ -111,6 +112,9 @@ function Router() {
       </Route>
       <Route path="/admin/transactions">
         <ProtectedRoute component={TransactionOversight} allowedRoles={['Admin']} />
+      </Route>
+      <Route path="/admin/funding">
+        <ProtectedRoute component={FundingSettings} allowedRoles={['Admin']} />
       </Route>
       <Route path="/admin/banks">
         <ProtectedRoute component={AdminBanks} allowedRoles={['Admin']} />

@@ -149,15 +149,10 @@ export default function Security() {
             <Label>Phone Number</Label>
             <Input value={profile?.phone || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : prev)} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Bank Name</Label>
-              <Input value={profile?.bank_account?.bank_name || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, bank_account: { ...(prev.bank_account || { bank_name: '', account_number: '' }), bank_name: e.target.value } } : prev)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Account Number</Label>
-              <Input value={profile?.bank_account?.account_number || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, bank_account: { ...(prev.bank_account || { bank_name: '', account_number: '' }), account_number: e.target.value } } : prev)} />
-            </div>
+          <div className="space-y-2">
+            <Label>Bank Details</Label>
+            <p className="text-xs text-muted-foreground">Manage withdrawal bank and destination details under Withdrawals.</p>
+            <Button variant="outline" onClick={() => { window.location.href = '/withdrawals'; }}>Go to Withdrawals</Button>
           </div>
           <div className="space-y-2">
             <Label>Detected IP Address</Label>
@@ -166,7 +161,7 @@ export default function Security() {
           <Button onClick={async () => {
             if (!profile) return;
             try {
-              const body: any = { phone: profile.phone, bank_account: profile.bank_account };
+              const body: any = { phone: profile.phone };
               const r = await fetch(`${apiBase}/profile`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify(body) });
               if (r.ok) { db.updateUser(profile); toast({ title: 'Profile Saved', description: 'Additional info updated.' }); }
               else { toast({ variant: 'destructive', title: 'Save Failed' }); }
