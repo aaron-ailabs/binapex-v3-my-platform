@@ -104,12 +104,12 @@ async function run() {
   assert.equal(setScore.ok, true)
   assert.equal(setScore.body.score, 735)
   const loginTrader = await json(`${base}/api/auth/login`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'trader', password: 'password' })
+    method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'trader', password: 'password' })
   })
   assert.equal(loginTrader.ok, true)
   const tToken = String(loginTrader.body.token || '')
   assert.ok(tToken.length > 0)
-  const traderHeaders = { Authorization: `Bearer ${tToken}` }
+  const traderHeaders = withCsrf(csrf, { Authorization: `Bearer ${tToken}`, 'Content-Type': 'application/json' })
   const traderId = String(loginTrader.body.userId || '')
   assert.ok(traderId.length > 0)
 

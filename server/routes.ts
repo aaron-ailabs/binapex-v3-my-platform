@@ -710,6 +710,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Synthetic price fallback: Generates a deterministic price based on symbol char codes.
       // This ensures the trading engine works in demo environments without a valid AlphaVantage API key.
       if (!ALPHA_KEY) {
+        const env = (process.env.NODE_ENV || 'development').toLowerCase();
+        if (env !== 'development') {
+          return res.status(503).json({ message: 'Price feed unavailable: API key missing' });
+        }
         const synthetic = Math.abs(s.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 1000 + 100;
         return res.json({ symbol: s, price: synthetic, source: 'synthetic' });
       }
@@ -838,27 +842,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.end(f.buf);
   });
 
-  app.post('/api/demo/seed', async (_req: Request, res: Response) => {
-    const users = [
-      { username: 'trader', password: 'password', role: 'Trader' },
-      { username: 'admin', password: 'password', role: 'Admin' },
-      { username: 'support', password: 'password', role: 'Customer Service' },
-    ];
-    const created: any[] = [];
-    for (const u of users) {
-      const existing = await storage.getUserByUsername(u.username);
-      if (existing) {
-        await storage.updateUser(existing.id, { role: u.role as any });
-        created.push(existing);
-      } else {
-        const nu = await storage.createUser({ username: u.username, password: u.password } as any);
-        const upd = await storage.updateUser(nu.id, { role: u.role as any });
-        created.push(upd);
-      }
-    }
-    seedAssets();
-    res.json({ users: created, assets: Array.from(assets.keys()) });
-  });
+  // Removed duplicate demo seed endpoint to prevent unintended seeding in non-demo environments
 
   const wallets = new Map<string, { id: string; userId: string; assetName: string; balanceUsd: number }>();
   const walletLocks = new Map<string, Promise<void>>();

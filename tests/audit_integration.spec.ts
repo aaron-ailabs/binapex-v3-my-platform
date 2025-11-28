@@ -20,6 +20,7 @@ async function run() {
   const tAuth = { Authorization: `Bearer ${tToken}` }
   
   const loginAdmin = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'password' }) })
+  if (!loginAdmin.ok) console.log('Admin login failed:', loginAdmin.status, loginAdmin.body)
   assert.equal(loginAdmin.ok, true, 'Admin login failed')
   const aToken = String(loginAdmin.body.token || '')
   const aAuth = { Authorization: `Bearer ${aToken}` }
