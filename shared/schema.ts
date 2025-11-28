@@ -140,3 +140,25 @@ export const payoutOverrides = pgTable("payout_overrides", {
 }));
 
 export type PayoutOverride = typeof payoutOverrides.$inferSelect;
+
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey(),
+  initiatorId: varchar("initiator_id"),
+  status: text("status").notNull().default('active'),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+  closedAt: timestamp("closed_at", { mode: 'date' }),
+}, (table) => ({
+  chat_sessions_status_idx: index("chat_sessions_status_idx").on(table.status),
+}))
+
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  sender: text("sender").notNull(),
+  text: text("text"),
+  timestamp: timestamp("timestamp", { mode: 'date' }).notNull().default(sql`now()`),
+  readBy: text("read_by"),
+}, (table) => ({
+  chat_messages_session_idx: index("chat_messages_session_idx").on(table.sessionId),
+  chat_messages_time_idx: index("chat_messages_time_idx").on(table.timestamp),
+}))

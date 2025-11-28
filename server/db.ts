@@ -26,5 +26,10 @@ export async function ensureSchema(): Promise<void> {
     await client`CREATE TABLE IF NOT EXISTS payout_overrides (id varchar PRIMARY KEY DEFAULT gen_random_uuid(), user_id varchar NOT NULL, trader_id varchar NOT NULL, pct integer NOT NULL, start_date timestamp NOT NULL, end_date timestamp NOT NULL, created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now())`
     await client`CREATE INDEX IF NOT EXISTS payout_overrides_user_idx ON payout_overrides(user_id)`
     await client`CREATE INDEX IF NOT EXISTS payout_overrides_trader_idx ON payout_overrides(trader_id)`
+    await client`CREATE TABLE IF NOT EXISTS chat_sessions (id varchar PRIMARY KEY, initiator_id varchar, status text NOT NULL DEFAULT 'active', created_at timestamp NOT NULL DEFAULT now(), closed_at timestamp)`
+    await client`CREATE INDEX IF NOT EXISTS chat_sessions_status_idx ON chat_sessions(status)`
+    await client`CREATE TABLE IF NOT EXISTS chat_messages (id varchar PRIMARY KEY DEFAULT gen_random_uuid(), session_id varchar NOT NULL, sender text NOT NULL, text text, timestamp timestamp NOT NULL DEFAULT now(), read_by text)`
+    await client`CREATE INDEX IF NOT EXISTS chat_messages_session_idx ON chat_messages(session_id)`
+    await client`CREATE INDEX IF NOT EXISTS chat_messages_time_idx ON chat_messages(timestamp)`
   } catch {}
 }

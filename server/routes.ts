@@ -7,7 +7,7 @@ import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPass
 import { z } from 'zod';
 import { registry, tradeExecutionDuration, loginAttempts } from './metrics';
 import { db, sb, hasSupabase } from './db';
-import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits } from '@shared/schema';
+import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits, chatSessions as tblChatSessions } from '@shared/schema';
 import * as speakeasy from "speakeasy";
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
 import Redis from 'ioredis';
@@ -451,14 +451,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(getPresence());
   });
 
-  app.post('/api/support/session', (_req: Request, res: Response) => {
+  app.post('/api/support/session', async (req: Request, res: Response) => {
     const id = Math.random().toString(36).slice(2, 10);
+    try {
+      if (db) await (db as any).insert(tblChatSessions).values({ id, status: 'active' });
+    } catch {}
     res.json({ sessionId: id });
   });
 
-  app.post('/api/support/message', async (req: Request, res: Response) => {
+  const supportMessageSchema = z.object({ sessionId: z.string().min(1).max(64).optional(), text: z.string().min(1).max(2000) });
+  app.post('/api/support/message', requireRateLimit('support-message', 30, 600000), enforceTLS, async (req: Request, res: Response) => {
     try {
-      const text = String((req.body || {}).text || '').trim();
+      const parsed = supportMessageSchema.safeParse(req.body || {});
+      if (!parsed.success) return res.status(400).json({ message: 'Invalid message payload' });
+      const text = parsed.data.text.trim();
       const lower = text.toLowerCase();
       let reply = "I’m your Binapex AI Assistant. How can I help today?";
       if (lower.includes("kyc")) reply = "You can check your KYC status under Security. Need steps?";

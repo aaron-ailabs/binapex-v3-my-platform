@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes, getPresence, registerPresenceRoutes } from "./routes";
-import { ensureSchema } from "./db";
+import { ensureSchema, db } from "./db";
+import { chatMessages } from "@shared/schema";
+import { eq, asc } from 'drizzle-orm'
 import { WebSocketServer } from "ws";
 import { Counter, Gauge } from "prom-client";
 import crypto from 'crypto';
@@ -31,12 +33,12 @@ function serveStatic(app: express.Express) {
   }
   app.use((req, res, next) => {
     const p = req.path || ''
-    if (p.startsWith('/api') || p.startsWith('/ws')) return next()
+    if (p.startsWith('/api') || p.startsWith('/ws') || p === '/metrics') return next()
     return express.static(distPath, { maxAge: '7d', etag: true })(req, res, next)
   })
   app.use((req, res, next) => {
     const p = req.path || ''
-    if (p.startsWith('/api') || p.startsWith('/ws')) return next()
+    if (p.startsWith('/api') || p.startsWith('/ws') || p === '/metrics') return next()
     res.sendFile(path.resolve(distPath, 'index.html'))
   })
 }
@@ -227,6 +229,9 @@ const isVercel = !!process.env.VERCEL;
     const list = transcripts.get(sessionId) || [];
     list.push(payload);
     transcripts.set(sessionId, list);
+    if (db) {
+      try { (db as any).insert(chatMessages).values({ id: payload.id, sessionId, sender: payload.sender, text: payload.text || null, timestamp: new Date(payload.timestamp), readBy: (payload.readBy || []).join(',') }); } catch {}
+    }
     clients.forEach((ws) => {
       try {
         ws.send(JSON.stringify({ type: "message", data: payload }));
@@ -357,8 +362,15 @@ const isVercel = !!process.env.VERCEL;
   });
 
   // Chat history endpoint for moderation and session persistence
-  app.get('/api/chat/history/:sessionId', (req: Request, res: Response) => {
+  app.get('/api/chat/history/:sessionId', async (req: Request, res: Response) => {
     const id = req.params.sessionId;
+    if (db) {
+      try {
+        const rows = await (db as any).select().from(chatMessages).where(eq((chatMessages as any).sessionId, id)).orderBy(asc((chatMessages as any).timestamp));
+        const messages = rows.map((r: any) => ({ id: r.id, sessionId: r.sessionId, sender: r.sender, text: r.text || undefined, timestamp: new Date(r.timestamp).getTime(), readBy: String(r.readBy || '').split(',').filter(Boolean) }));
+        return res.json({ messages });
+      } catch {}
+    }
     res.json({ messages: transcripts.get(id) || [] });
   });
 
