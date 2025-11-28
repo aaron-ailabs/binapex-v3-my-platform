@@ -29,8 +29,14 @@ function serveStatic(app: express.Express) {
   if (!fs.existsSync(distPath)) {
     throw new Error(`Could not find the build directory: ${distPath}, make sure to build the client first`)
   }
-  app.use(express.static(distPath, { maxAge: '7d', etag: true }))
-  app.use((_req, res) => {
+  app.use((req, res, next) => {
+    const p = req.path || ''
+    if (p.startsWith('/api') || p.startsWith('/ws')) return next()
+    return express.static(distPath, { maxAge: '7d', etag: true })(req, res, next)
+  })
+  app.use((req, res, next) => {
+    const p = req.path || ''
+    if (p.startsWith('/api') || p.startsWith('/ws')) return next()
     res.sendFile(path.resolve(distPath, 'index.html'))
   })
 }

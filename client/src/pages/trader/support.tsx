@@ -150,17 +150,17 @@ export default function Support() {
     if (!already) wsRef.current.send(JSON.stringify({ type: 'read', messageId: last.id }));
   }, [messages, user, httpMode]);
 
-  if (!user || user.role !== 'Trader' || user.kyc_status !== 'Approved') {
+  if (!user || user.role !== 'Trader') {
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-bold tracking-tight">Support</h1>
-          <p className="text-muted-foreground">Access restricted. Only verified traders can use live chat.</p>
+          <p className="text-muted-foreground">Access restricted. Only traders can use live chat.</p>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Verification Required</CardTitle>
-            <CardDescription>Please complete KYC to enable live chat.</CardDescription>
+            <CardTitle>Trader Role Required</CardTitle>
+            <CardDescription>Please login as a Trader to access live chat.</CardDescription>
           </CardHeader>
           <CardContent>
             <a href="/security" className="inline-flex items-center h-9 px-3 rounded-md bg-primary text-primary-foreground">Go to Security</a>
