@@ -1,33 +1,29 @@
 import assert from 'node:assert'
+import { initCsrf, withCsrf, json } from './utils/csrf'
 
 const base = 'http://127.0.0.1:5000'
 
-async function json(url: string, init?: RequestInit) {
-  const r = await fetch(url, { ...(init || {}), headers: { ...(init?.headers || {}), Accept: 'application/json' } })
-  const t = await r.text()
-  let body: any = t
-  try { body = JSON.parse(t) } catch {}
-  return { ok: r.ok, status: r.status, body }
-}
-
 async function run() {
+  const csrf = await initCsrf(base)
+
   const health = await json(`${base}/api/health`)
   assert.equal(health.ok, true)
   assert.equal(health.body.status, 'ok')
 
-  const seeded = await json(`${base}/api/demo/seed`, { method: 'POST' })
+  const seeded = await json(`${base}/api/demo/seed`, { method: 'POST', headers: withCsrf(csrf) })
   assert.equal(seeded.ok, true)
 
   const login = await json(`${base}/api/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withCsrf(csrf, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ username: 'admin', password: 'password' })
   })
+  if (!login.ok) console.log('Login failed:', login.status, login.body)
   assert.equal(login.ok, true)
   const token = String(login.body.token || '')
   assert.ok(token.length > 0)
 
-  const authHeaders = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  const authHeaders = withCsrf(csrf, { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' })
 
   const engine = await json(`${base}/api/engine`, { headers: authHeaders })
   assert.equal(engine.ok, true)
@@ -70,6 +66,7 @@ async function run() {
     body: JSON.stringify({ channel: 'email' })
   })
   assert.equal(reqCode.ok, true)
+  console.log('Verification Response:', reqCode.body)
   const devCode = String(reqCode.body.devCode || '')
   assert.ok(devCode.length > 0)
 

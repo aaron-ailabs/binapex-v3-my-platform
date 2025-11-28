@@ -82,11 +82,20 @@ async function run() {
   assert.equal(overrideRes.body.result, 'Win', 'Trade result should be Win')
   
   // 6. Wallet Settlement Verification
-  // Win = Amount + (Amount * PayoutPct)
-  // PayoutPct defaults to 85% usually, or whatever user has
+  // Logic Updated:
+  // Open: -Stake
+  // Win: +Stake + Profit
+  // Net Win: +Profit
+  // Net Loss: -Stake
+
+  // We started with initialBalance.
+  // After open: initialBalance - tradeAmount
+  // After win override: (initialBalance - tradeAmount) + (tradeAmount + expectedProfit)
+  // Net change: +expectedProfit
+
   const payoutPct = overrideRes.body.payoutPct || 85
   const expectedProfit = Number((tradeAmount * payoutPct / 100).toFixed(2))
-  const expectedSettled = Number((tradeAmount + expectedProfit).toFixed(2))
+  const expectedNetChange = expectedProfit
   
   // Check wallet using GET /api/wallets
   const walletGet = await json(`${base}/api/wallets`, { method: 'GET', headers: { ...tAuth } })
@@ -96,26 +105,35 @@ async function run() {
   
   console.log(`Final Wallet Balance: $${finalBalance}`)
   const balanceDiff = Number((finalBalance - initialBalance).toFixed(2))
-  console.log(`Balance Diff: ${balanceDiff}, Expected Settled: ${expectedSettled}`)
+  console.log(`Balance Diff: ${balanceDiff}, Expected Net Change: ${expectedNetChange}`)
   
-  // In this logic, if balance wasn't deducted at open:
-  // Win: +185. 
-  // Loss: -100.
-  
-  assert.ok(Math.abs(balanceDiff - expectedSettled) < 0.1, `Wallet balance update mismatch. Expected +${expectedSettled}, got ${balanceDiff}`)
+  assert.ok(Math.abs(balanceDiff - expectedNetChange) < 0.1, `Wallet balance update mismatch. Expected +${expectedNetChange}, got ${balanceDiff}`)
 
   // 7. Balance Check Verification (Negative Test)
   console.log('Testing Balance Check (Insufficient Funds)...')
-  // Use admin user who hasn't deposited (expect 0 balance)
-  const walletRes = await json(`${base}/api/wallets`, { method: 'GET', headers: { ...aAuth } })
-  const adminUsd = walletRes.body.find((w: any) => w.assetName === 'USD')
-  const adminBalance = Number(adminUsd?.balanceUsd || 0)
   
-  // Attempt trade > balance
+  // Create a new user with 0 balance to avoid Max Trade Size issues with rich admins
+  const brokeUser = `broke_${Date.now()}`
+  const regBroke = await json(`${base}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `${brokeUser}@test.com`, password: 'password' })
+  })
+  assert.equal(regBroke.ok, true, 'Broke user registration failed')
+  const bToken = String(regBroke.body.token || '')
+  const bAuth = { Authorization: `Bearer ${bToken}` }
+
+  // Verify 0 balance
+  const bWalletRes = await json(`${base}/api/wallets`, { method: 'GET', headers: { ...bAuth } })
+  const bUsd = bWalletRes.body.find((w: any) => w.assetName === 'USD' || w.assetName === 'balance_usd')
+  const bBalance = Number(bUsd?.balanceUsd || 0)
+  assert.equal(bBalance, 0, 'Broke user should have 0 balance')
+
+  // Attempt trade of 100 (valid size, but insufficient funds)
   const badTradeRes = await json(`${base}/api/trades`, { 
     method: 'POST', 
-    headers: { ...aAuth, 'Content-Type': 'application/json' }, 
-    body: JSON.stringify({ ...tradeReq, amount: adminBalance + 100 }) 
+    headers: { ...bAuth, 'Content-Type': 'application/json' }, 
+    body: JSON.stringify({ ...tradeReq, amount: 100 }) 
   })
   assert.equal(badTradeRes.status, 403, 'Trade with insufficient balance should be forbidden')
   assert.equal(badTradeRes.body.message, 'Insufficient balance', 'Error message mismatch')

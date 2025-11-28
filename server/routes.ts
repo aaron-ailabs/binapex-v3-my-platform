@@ -315,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 10 * 60 * 1000;
     verificationCodes.set(`${userId}:${ch}`, { code, expiresAt });
-    const dev = (process.env.NODE_ENV || '').toLowerCase() === 'development';
+    const dev = (process.env.NODE_ENV || '').toLowerCase() === 'development' || process.env.ENABLE_DEMO_SEED === '1';
     res.json(dev ? { sent: true, devCode: code } : { sent: true });
   });
 
@@ -980,16 +980,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if ('balanceUsd' in w) balance = Number(w.balanceUsd);
       if ('balanceUsdCents' in w) balance = Number(w.balanceUsdCents) / 100;
 
-      let locked = 0;
-      if (db) {
-        const openTrades = await db.select().from(tblTrades).where(and(eq(tblTrades.userId, userId), eq(tblTrades.status, 'Open')));
-        locked = openTrades.reduce((a, t) => a + (t.amountUsdCents / 100), 0);
-      } else {
-        locked = openForUser.reduce((a, t) => a + Number(t.amount), 0);
+      if (balance < amt) {
+        return res.status(403).json({ message: 'Insufficient balance' });
       }
 
-      if (balance - locked < amt) {
-        return res.status(403).json({ message: 'Insufficient balance' });
+      // Deduct stake immediately
+      let deductionSuccess = false;
+      if (hasSupabase && sb) {
+        try {
+          await withWalletLock(userId, async () => {
+            const { data } = await sb.from('wallets').select('id,balance_usd').eq('id', (w as any).id).limit(1);
+            const curr = data && data[0] ? Number(data[0].balance_usd) : 0;
+            if (curr < amt) throw new Error('Insufficient balance');
+            const next = Number((curr - amt).toFixed(2));
+            await sb.from('wallets').update({ balance_usd: next }).eq('id', (w as any).id);
+            deductionSuccess = true;
+          });
+        } catch {}
+      } else if (db && 'balanceUsdCents' in w) {
+        try {
+           const res = await db.update(tblWallets)
+             .set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} - ${Math.round(amt * 100)}` })
+             .where(and(eq(tblWallets.id, (w as any).id), gte(tblWallets.balanceUsdCents, Math.round(amt * 100))))
+             .returning();
+           if (res.length > 0) deductionSuccess = true;
+        } catch {}
+      } else {
+        await withWalletLock(userId, () => {
+          if ((w as any).balanceUsd >= amt) {
+            (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
+            wallets.set(`${userId}:USD`, w as any);
+            deductionSuccess = true;
+          }
+        });
+      }
+
+      if (!deductionSuccess) {
+         return res.status(403).json({ message: 'Insufficient balance or transaction failed' });
       }
       const base = cache.has(String(symbol)) ? cache.get(String(symbol))! : computeBase(String(symbol));
       const id = Math.random().toString(36).slice(2,9);
@@ -1047,7 +1074,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         trades.set(id, updated);
         const w = await ensureUsdWallet(userId);
         const payout = Number(((t.amount * (t.payoutPct || 85)) / 100).toFixed(2));
-        const settled = win ? Number((t.amount + payout).toFixed(2)) : -t.amount;
+        const settled = win ? Number((t.amount + payout).toFixed(2)) : 0;
         if (hasSupabase && sb) {
           try {
             await withWalletLock(userId, async () => {
@@ -1098,7 +1125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const wentUp = exit >= t.entryPrice;
     const win = typeof result !== 'undefined' ? (result === 'Win') : ((t.direction === 'High' && wentUp) || (t.direction === 'Low' && !wentUp));
     const payout = Number(((t.amount * (t.payoutPct || 85)) / 100).toFixed(2));
-    const settled = win ? Number((t.amount + payout).toFixed(2)) : -t.amount;
+    const settled = win ? Number((t.amount + payout).toFixed(2)) : 0;
     const delta = Number((settled - prev).toFixed(2));
     const w = await ensureUsdWallet(t.userId);
     if (hasSupabase && sb) {
