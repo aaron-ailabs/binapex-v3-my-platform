@@ -37,6 +37,7 @@ import AdminCompliance from "@/pages/admin/compliance";
 import ProfilePage from "@/pages/profile";
 
 import CSDashboard from "@/pages/cs/dashboard";
+import ChatSimulation from "@/pages/cs/simulation";
 import UserLookup from "@/pages/cs/user-lookup";
 
 function ProtectedRoute({ component: Component, allowedRoles }: { component: React.ComponentType, allowedRoles?: string[] }) {
@@ -146,6 +147,9 @@ function Router() {
       {/* CS Routes */}
       <Route path="/cs">
         <ProtectedRoute component={CSDashboard} allowedRoles={['Customer Service']} />
+      </Route>
+      <Route path="/cs/simulation">
+        <ProtectedRoute component={ChatSimulation} allowedRoles={["Customer Service","Admin"]} />
       </Route>
       <Route path="/cs/lookup">
         <ProtectedRoute component={UserLookup} allowedRoles={['Customer Service']} />
