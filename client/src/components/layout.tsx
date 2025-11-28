@@ -387,8 +387,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Button 
               variant="ghost" 
               size="icon" 
-              className="md:hidden -ml-2"
+              className="md:hidden -ml-2 relative after:absolute after:-inset-2"
               onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation"
             >
               <Menu className="w-5 h-5" />
             </Button>

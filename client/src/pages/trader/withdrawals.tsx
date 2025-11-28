@@ -201,7 +201,7 @@ export default function Withdrawals() {
                    <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-2">
                        <Label>Amount (USD)</Label>
-                       <Input type="number" placeholder="Min 50.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                       <Input type="number" inputMode="decimal" placeholder="Min 50.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
                      </div>
                      <div className="space-y-2">
                        <Label>Receive (MYR)</Label>
@@ -229,7 +229,7 @@ export default function Withdrawals() {
                    
                    <div className="space-y-2">
                      <Label>Account Number</Label>
-                     <Input placeholder="Enter account number" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
+                     <Input placeholder="Enter account number" inputMode="numeric" pattern="[0-9]*" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} />
                    </div>
 
                    <Alert className="bg-blue-500/10 border-blue-500/20 text-blue-500">
@@ -275,7 +275,7 @@ export default function Withdrawals() {
 
                   <div className="space-y-2">
                     <Label>Amount (USD)</Label>
-                    <Input type="number" placeholder="Min 50.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                    <Input type="number" inputMode="decimal" placeholder="Min 50.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
                   </div>
 
                   <div className="space-y-2">
@@ -295,12 +295,12 @@ export default function Withdrawals() {
 
                   <div className="space-y-2 pt-2 border-t border-border mt-2">
                      <Label>2FA Code (Google Authenticator)</Label>
-                     <Input 
-                        placeholder="Enter 6-digit code" 
-                        value={twoFactorCode} 
-                        onChange={(e) => setTwoFactorCode(e.target.value)}
-                        maxLength={6}
-                     />
+                    <Input 
+                      placeholder="Enter 6-digit code" 
+                      value={twoFactorCode} 
+                      onChange={(e) => setTwoFactorCode(e.target.value)}
+                      maxLength={6}
+                    />
                      <p className="text-[10px] text-muted-foreground">Required for all crypto withdrawals.</p>
                   </div>
                 </CardContent>
@@ -329,7 +329,7 @@ export default function Withdrawals() {
                    <div className="grid grid-cols-2 gap-4">
                      <div className="space-y-2">
                        <Label>Amount (USD)</Label>
-                       <Input type="number" placeholder="Min 50.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                       <Input type="number" inputMode="decimal" placeholder="Min 50.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
                      </div>
                      <div className="space-y-2">
                        <Label>Receive (MYR)</Label>
@@ -339,7 +339,7 @@ export default function Withdrawals() {
 
                    <div className="space-y-2">
                      <Label>Account Number / Phone</Label>
-                     <Input placeholder="e.g. +60123456789" value={ewalletAccount} onChange={(e) => setEwalletAccount(e.target.value)} />
+                     <Input placeholder="e.g. +60123456789" inputMode="tel" value={ewalletAccount} onChange={(e) => setEwalletAccount(e.target.value)} />
                    </div>
 
                    <Alert className="bg-green-500/10 border-green-500/20 text-green-500">
@@ -362,6 +362,7 @@ export default function Withdrawals() {
                     placeholder="Enter your security password" 
                     value={withdrawalPassword} 
                     onChange={(e) => setWithdrawalPassword(e.target.value)} 
+                    enterKeyHint="done"
                   />
                </div>
                <Button className="w-full" size="lg" onClick={handleWithdraw}>
@@ -423,7 +424,8 @@ export default function Withdrawals() {
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="h-6 w-6" 
+                            className="h-6 w-6 relative after:absolute after:-inset-2" 
+                            aria-label="View eWallet receipt"
                             onClick={() => {
                               setSelectedTx(tx);
                               setReceiptOpen(true);

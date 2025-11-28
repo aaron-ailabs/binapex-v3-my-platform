@@ -124,7 +124,7 @@ export default function Deposits() {
                  {depositSettings.qr_code_url && (
                    <div className="mt-3">
                      <p className="font-bold text-foreground mb-2">QR Pay:</p>
-                     <img src={depositSettings.qr_code_url} alt="QR Code" className="w-40 h-40 rounded border" />
+                    <img src={depositSettings.qr_code_url} alt="QR Code" className="w-40 h-40 rounded border" loading="lazy" decoding="async" />
                    </div>
                  )}
                </div>

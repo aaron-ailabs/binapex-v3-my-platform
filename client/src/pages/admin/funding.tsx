@@ -105,7 +105,7 @@ export default function FundingSettings() {
                 <div className="flex items-center gap-3">
                   <Input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrUpload(e.target.files?.[0])} className="max-w-[260px]" />
                   {settings.qr_code_url ? (
-                    <img src={settings.qr_code_url} alt="QR" className="h-16 w-16 rounded border border-white/10 object-cover" />
+                    <img src={settings.qr_code_url} alt="QR" className="h-16 w-16 rounded border border-white/10 object-cover" loading="lazy" decoding="async" />
                   ) : null}
                 </div>
                 {settings.qr_code_url ? (
