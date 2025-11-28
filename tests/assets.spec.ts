@@ -1,4 +1,5 @@
 import assert from 'node:assert'
+import { initCsrf, withCsrf } from './utils/csrf'
 
 const base = 'http://127.0.0.1:5000'
 
@@ -22,6 +23,8 @@ async function run() {
   const token = String(login.body.token || '')
   assert.ok(token.length > 0)
   const headers = { Authorization: `Bearer ${token}` }
+
+  const csrf = await initCsrf(base)
 
   const assets = await json(`${base}/api/assets`, { headers })
   assert.equal(assets.ok, true)
@@ -51,7 +54,7 @@ async function run() {
 
   const alertRes = await json(`${base}/api/alerts/price`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: withCsrf(csrf, { 'Content-Type': 'application/json', ...headers }),
     body: JSON.stringify({ symbol: 'COMEX:GC1!', target: 120, direction: 'above' })
   })
   assert.equal(alertRes.ok, true)
