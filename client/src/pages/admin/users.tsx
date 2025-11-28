@@ -297,6 +297,7 @@ export default function UserManagement() {
               </DialogContent>
             </Dialog>
           )}
+            <div className="overflow-x-auto">
             <Table className="sm:text-sm text-xs">
               <TableHeader>
                 <TableRow>
@@ -360,7 +361,9 @@ export default function UserManagement() {
                 })}
               </TableBody>
             </Table>
+            </div>
           </div>
+          <div className="overflow-x-auto">
           <Table className="sm:text-sm text-xs sm:table-auto table-fixed mobile-table">
             <TableHeader>
               <TableRow>
@@ -555,6 +558,7 @@ export default function UserManagement() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

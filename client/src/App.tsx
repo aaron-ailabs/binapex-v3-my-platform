@@ -161,8 +161,23 @@ function Router() {
 }
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { useEffect } from "react";
 
 function App() {
+  useEffect(() => {
+    const ua = navigator.userAgent.toLowerCase();
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+    const isAndroid = /android/.test(ua);
+    
+    if (isIOS) {
+      document.body.setAttribute('data-platform', 'ios');
+      document.documentElement.style.setProperty('--safe-area-bottom', 'env(safe-area-inset-bottom)');
+    }
+    if (isAndroid) {
+      document.body.setAttribute('data-platform', 'android');
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">

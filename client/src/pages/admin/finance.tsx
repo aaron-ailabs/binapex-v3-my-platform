@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { db } from '@/lib/mock-data'
 import { fmtUSD, toUSD } from '@/lib/utils'
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts'
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AdminFinance() {
@@ -60,13 +60,17 @@ export default function AdminFinance() {
         <Card>
           <CardHeader><CardTitle>Daily Flow</CardTitle></CardHeader>
           <CardContent>
-            <LineChart width={320} height={140} data={pnl}>
-              <CartesianGrid stroke="#333" strokeDasharray="3 3" />
-              <XAxis dataKey="date" hide />
-              <YAxis hide />
-              <Tooltip />
-              <Line type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={2} dot={false} />
-            </LineChart>
+            <div className="w-full h-[140px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={pnl}>
+                  <CartesianGrid stroke="#333" strokeDasharray="3 3" />
+                  <XAxis dataKey="date" hide />
+                  <YAxis hide />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -78,8 +82,9 @@ export default function AdminFinance() {
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
           <CardHeader><CardTitle>Recent Deposits</CardTitle></CardHeader>
-          <CardContent>
-            <Table>
+        <CardContent>
+          <div className="overflow-x-auto">
+          <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>ID</TableHead>
@@ -92,12 +97,14 @@ export default function AdminFinance() {
                   <TableRow key={t.id}><TableCell className="font-mono text-xs">{t.id}</TableCell><TableCell>{fmtUSD(toUSD(t.asset, t.amount))}</TableCell><TableCell><Badge variant={t.status==='Approved'?'default':t.status==='Pending'?'secondary':'destructive'}>{t.status}</Badge></TableCell></TableRow>
                 ))}
               </TableBody>
-            </Table>
-          </CardContent>
+          </Table>
+          </div>
+        </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>Recent Withdrawals</CardTitle></CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -112,6 +119,7 @@ export default function AdminFinance() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

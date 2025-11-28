@@ -280,6 +280,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json((req as any).user);
   });
 
+  const uploads = new Map<string, { mime: string; data: Buffer }>();
+  app.post('/api/chat/upload', requireAuth, requireRateLimit('chat-upload', 10, 60000), async (req: Request, res: Response) => {
+    try {
+      const { filename, mimeType, contentBase64 } = req.body || {};
+      const mime = String(mimeType || '').toLowerCase();
+      if (!mime || !/^(image\/(png|jpeg)|application\/pdf)$/.test(mime)) return res.status(400).json({ message: 'Invalid mime type' });
+      const b64 = String(contentBase64 || '').trim();
+      if (!b64) return res.status(400).json({ message: 'No content' });
+      const buf = Buffer.from(b64, 'base64');
+      const id = generateSecureToken(8);
+      uploads.set(id, { mime, data: buf });
+      res.json({ id, name: String(filename || 'file') });
+    } catch {
+      res.status(500).json({ message: 'Upload failed' });
+    }
+  });
+  app.get('/api/chat/file/:id', enforceTLS, async (req: Request, res: Response) => {
+    const id = String(req.params.id || '').trim();
+    const u = uploads.get(id);
+    if (!u) return res.status(404).json({ message: 'Not found' });
+    res.setHeader('Content-Type', u.mime);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    try { res.end(u.data); } catch { res.status(500).json({ message: 'Error serving file' }); }
+  });
+
 
   const verificationCodes = new Map<string, { code: string; expiresAt: number }>();
 

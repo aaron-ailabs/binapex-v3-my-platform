@@ -78,10 +78,12 @@ export default function Deposits() {
             <div className="space-y-2">
               <Label>Amount ( MYR )</Label>
               <Input 
-                type="number" 
-                placeholder="1000" 
-                value={amount} 
-                onChange={(e) => setAmount(e.target.value)} 
+                type="number"
+                inputMode="decimal"
+                enterKeyHint="send"
+                placeholder="1000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
               />
             </div>
 
@@ -138,6 +140,7 @@ export default function Deposits() {
           <CardTitle>Deposit History</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -169,6 +172,7 @@ export default function Deposits() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

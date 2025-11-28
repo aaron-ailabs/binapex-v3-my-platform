@@ -160,6 +160,8 @@ export default function AuthPage() {
                     <Input 
                       id="email" 
                       type="email" 
+                      inputMode="email"
+                      enterKeyHint="go"
                       placeholder="trader@binapex.com" 
                       value={email} 
                       onChange={(e) => setEmail(e.target.value)}
@@ -172,6 +174,7 @@ export default function AuthPage() {
                     <Input 
                       id="password" 
                       type="password" 
+                      enterKeyHint="go"
                       value={password} 
                       onChange={(e) => setPassword(e.target.value)}
                       required 
@@ -213,6 +216,8 @@ export default function AuthPage() {
                     <Input 
                       id="reg-email" 
                       type="email" 
+                      inputMode="email"
+                      enterKeyHint="next"
                       placeholder="john@example.com" 
                       value={regEmail} 
                       onChange={(e) => setRegEmail(e.target.value)}
@@ -225,6 +230,8 @@ export default function AuthPage() {
                     <Input 
                       id="reg-phone" 
                       type="tel" 
+                      inputMode="tel"
+                      enterKeyHint="next"
                       placeholder="012-3456789" 
                       value={regPhone} 
                       onChange={(e) => setRegPhone(e.target.value)}
@@ -236,6 +243,7 @@ export default function AuthPage() {
                     <Input 
                       id="reg-pass" 
                       type="password" 
+                      enterKeyHint="done"
                       value={regPassword} 
                       onChange={(e) => setRegPassword(e.target.value)}
                       required 

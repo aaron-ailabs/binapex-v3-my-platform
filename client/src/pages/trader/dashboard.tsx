@@ -113,7 +113,7 @@ export default function TraderDashboard() {
         </CardHeader>
         <CardContent>
           <div className="flex items-baseline gap-3">
-            <div className={`text-4xl font-bold ${scoreColor()}`}>{fmtScore(creditScore)}</div>
+            <div className={`text-3xl sm:text-4xl font-bold ${scoreColor()}`}>{fmtScore(creditScore)}</div>
             <div className="text-sm text-muted-foreground">{creditScore >= 700 ? 'Good' : creditScore >= 500 ? 'Fair' : 'Needs Improvement'}</div>
           </div>
           <div className="mt-2 text-xs text-muted-foreground">Last updated: {new Date(creditUpdatedAt).toLocaleString()}</div>
@@ -128,7 +128,7 @@ export default function TraderDashboard() {
             <WalletIcon className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">{fmtUSD(totalBalance)}</div>
+            <div className="text-xl sm:text-2xl font-bold text-primary">{fmtUSD(totalBalance)}</div>
             <p className="text-xs text-muted-foreground">+20.1% from last month</p>
           </CardContent>
         </Card>
@@ -138,7 +138,7 @@ export default function TraderDashboard() {
             <TrendingUp className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-500">+${totalPayouts.toLocaleString()}</div>
+            <div className="text-xl sm:text-2xl font-bold text-emerald-500">+${totalPayouts.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Lifetime earnings</p>
           </CardContent>
         </Card>
@@ -148,7 +148,7 @@ export default function TraderDashboard() {
             <div className="text-yellow-500 text-xl">♛</div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{user?.membership_tier}</div>
+            <div className="text-xl sm:text-2xl font-bold text-yellow-500">{user?.membership_tier}</div>
             <p className="text-xs text-muted-foreground">Benefits active</p>
           </CardContent>
         </Card>
@@ -211,6 +211,7 @@ export default function TraderDashboard() {
             <CardTitle>My Wallets</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -227,6 +228,7 @@ export default function TraderDashboard() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -235,6 +237,7 @@ export default function TraderDashboard() {
             <CardTitle>My Bonuses</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -258,6 +261,7 @@ export default function TraderDashboard() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

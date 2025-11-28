@@ -219,7 +219,7 @@ export default function Support() {
             </div>
             <div className="mt-2 text-xs text-muted-foreground">Session ID: <span className="font-mono">{sessionId}</span> <button className="underline" onClick={() => navigator.clipboard.writeText(sessionId)}>Copy</button></div>
             <div className="flex items-center gap-2 mt-4">
-              <Input value={chatInput} onChange={(e) => { setChatInput(e.target.value); if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current); typingTimerRef.current = window.setTimeout(() => sendTyping(), 150); }} placeholder="Type a message…" onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
+              <Input value={chatInput} onChange={(e) => { setChatInput(e.target.value); if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current); typingTimerRef.current = window.setTimeout(() => sendTyping(), 150); }} placeholder="Type a message…" aria-label="Type a message" enterKeyHint="send" onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
               <Button onClick={sendChat} className="bg-gradient-to-r from-primary to-amber-300 text-black">Send</Button>
               <Input type="file" accept="application/pdf,image/png,image/jpeg" onChange={onAttach} className="max-w-[180px]" />
             </div>

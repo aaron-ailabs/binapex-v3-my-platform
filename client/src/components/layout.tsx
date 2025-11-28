@@ -484,11 +484,32 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6 overflow-x-hidden">
+        <main className="flex-1 p-6 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-6">
           <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
             {children}
           </div>
         </main>
+        {/* Mobile Bottom Nav */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-[env(safe-area-inset-bottom)]">
+          <div className="grid grid-cols-5">
+            {[
+              { href: '/dashboard', label: 'Home', icon: LayoutDashboard },
+              { href: '/deposits', label: 'Deposit', icon: Wallet },
+              { href: '/withdrawals', label: 'Withdraw', icon: ArrowRightLeft },
+              { href: '/support', label: 'Support', icon: Headset },
+              { href: '/security', label: 'Security', icon: Shield },
+            ].map((link) => {
+              const Icon = link.icon as any;
+              const isActive = location === link.href;
+              return (
+                <Link key={link.href} href={link.href} className={cn('flex flex-col items-center justify-center h-14 text-xs', isActive ? 'text-primary' : 'text-muted-foreground')}> 
+                  <Icon className="w-5 h-5" />
+                  <span className="mt-0.5">{link.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );

@@ -147,7 +147,7 @@ export default function Security() {
           </div>
           <div className="space-y-2">
             <Label>Phone Number</Label>
-            <Input value={profile?.phone || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : prev)} />
+            <Input inputMode="tel" enterKeyHint="done" value={profile?.phone || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : prev)} />
           </div>
           <div className="space-y-2">
             <Label>Bank Details</Label>

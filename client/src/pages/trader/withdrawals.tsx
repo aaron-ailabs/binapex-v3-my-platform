@@ -400,6 +400,7 @@ export default function Withdrawals() {
               <CardTitle>History</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
+               <div className="overflow-x-auto">
                <Table>
                 <TableHeader>
                   <TableRow>
@@ -444,6 +445,7 @@ export default function Withdrawals() {
                   )}
                 </TableBody>
               </Table>
+              </div>
               <div className="p-4 pt-2">
                 <Button variant="ghost" className="w-full text-xs h-8" size="sm">View All History</Button>
               </div>
