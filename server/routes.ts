@@ -418,6 +418,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ sessionId: id });
   });
 
+  app.post('/api/support/message', async (req: Request, res: Response) => {
+    try {
+      const text = String((req.body || {}).text || '').trim();
+      const lower = text.toLowerCase();
+      let reply = "I’m your Binapex AI Assistant. How can I help today?";
+      if (lower.includes("kyc")) reply = "You can check your KYC status under Security. Need steps?";
+      else if (lower.includes("deposit") || lower.includes("fund")) reply = "For deposits, use Deposits page and follow funding instructions.";
+      else if (lower.includes("withdraw")) reply = "Withdrawals require verified KYC and 24h review for large amounts.";
+      else if (lower.includes("human")) reply = "I’ll escalate to a human agent. Please wait; we’ll notify you.";
+      res.json({ ok: true, reply });
+    } catch {
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
   // Profile Management
   type Profile = { name?: string; phone?: string; bank_account?: { bank_name: string; account_number: string; account_name?: string }; preferences?: Record<string, any> };
   const userProfiles = new Map<string, Profile>();

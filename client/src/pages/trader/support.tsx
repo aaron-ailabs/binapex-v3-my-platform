@@ -10,13 +10,14 @@ export default function Support() {
   const { user, token } = useAuth();
   const { toast } = useToast();
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
-  const wsBase = (import.meta.env.VITE_WS_BASE as string) || 'ws://localhost:5000';
+  const wsEnv = (import.meta.env.VITE_WS_BASE as string) || '';
   
   const [sessionId, setSessionId] = useState<string>('');
   const [presence, setPresence] = useState<{status: 'online'|'away'|'offline', waitTimeMins?: number}>({status:'offline'});
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState<{id?: string; sender: 'trader'|'agent'|'ai', text?: string, attachmentUrl?: string, filename?: string, mimeType?: string, timestamp: number, readBy?: string[]}[]>([]);
   const [typing, setTyping] = useState<boolean>(false);
+  const [httpMode, setHttpMode] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
   const typingTimerRef = useRef<number | null>(null);
 
@@ -34,7 +35,10 @@ export default function Support() {
         const res = await fetch(`${apiBase}/support/session`, { method: 'POST' });
         const data = await res.json();
         setSessionId(data.sessionId);
-        const targetWs = `${wsBase.replace(/^http/,'ws')}/ws`;
+        const scheme = (typeof location !== 'undefined' && location.protocol === 'https:') ? 'wss' : 'ws';
+        const host = (typeof location !== 'undefined' && location.host) ? location.host : 'localhost:5000';
+        const base = wsEnv ? wsEnv.replace(/^http/,'ws') : `${scheme}://${host}`;
+        const targetWs = `${base}${base.endsWith('/ws') ? '' : '/ws'}`;
         const ws = new WebSocket(`${targetWs}?sessionId=${data.sessionId}&role=trader${token ? `&token=${encodeURIComponent(token)}` : ''}`);
         wsRef.current = ws;
         ws.onmessage = (ev) => {
@@ -55,10 +59,12 @@ export default function Support() {
           } catch {}
         };
         ws.onopen = () => {
+          setHttpMode(false);
           setMessages((prev) => [...prev, { sender: 'ai', text: 'Welcome to Binapex Support. How can we help?', timestamp: Date.now() }]);
         };
         ws.onclose = () => {
-          toast({ variant: 'destructive', title: 'Chat disconnected', description: 'Please refresh to reconnect.' });
+          setHttpMode(true);
+          toast({ variant: 'destructive', title: 'Realtime chat unavailable', description: 'Switched to fallback messaging.' });
         };
         try {
           const h = await fetch(`${apiBase}/chat/history/${data.sessionId}`);
@@ -72,16 +78,30 @@ export default function Support() {
     }
     initSession();
     return () => { wsRef.current?.close(); };
-  }, [apiBase, wsBase, toast, token]);
+  }, [apiBase, wsEnv, toast, token]);
 
   
 
   const sendChat = () => {
     const text = chatInput.trim();
-    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: 'message', text }));
-    setMessages((prev) => [...prev, { sender: 'trader', text, timestamp: Date.now() }]);
+    if (!text) return;
+    const now = Date.now();
+    setMessages((prev) => [...prev, { sender: 'trader', text, timestamp: now }]);
     setChatInput('');
+    if (!httpMode && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'message', text }));
+      return;
+    }
+    (async () => {
+      try {
+        const r = await fetch(`${apiBase}/support/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId, text }) });
+        if (r.ok) {
+          const j = await r.json();
+          const reply = String(j.reply || 'Thank you. An agent will assist you shortly.');
+          setMessages((prev) => [...prev, { sender: 'ai', text: reply, timestamp: Date.now() }]);
+        }
+      } catch {}
+    })();
   };
 
   const onAttach = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -117,17 +137,18 @@ export default function Support() {
   };
 
   const sendTyping = () => {
+    if (httpMode) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({ type: 'typing' }));
   };
 
   useEffect(() => {
-    if (!wsRef.current || !user) return;
+    if (httpMode || !wsRef.current || !user) return;
     const last = messages[messages.length - 1];
     if (!last || last.sender === 'trader' || !last.id) return;
     const already = Array.isArray(last.readBy) && last.readBy.includes(user.id);
     if (!already) wsRef.current.send(JSON.stringify({ type: 'read', messageId: last.id }));
-  }, [messages, user]);
+  }, [messages, user, httpMode]);
 
   if (!user || user.role !== 'Trader' || user.kyc_status !== 'Approved') {
     return (
