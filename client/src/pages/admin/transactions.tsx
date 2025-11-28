@@ -1,5 +1,6 @@
 import { db, Transaction, DepositSettings, EngineSettings } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ export default function TransactionOversight() {
   const [engine, setEngine] = useState<EngineSettings | null>(null);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setTransactions(db.getTransactions().filter(t => t.status === 'Pending'));
@@ -25,6 +27,8 @@ export default function TransactionOversight() {
     if (typeof window !== 'undefined' && window.location.search.includes('tab=funding')) {
       setTimeout(() => settingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     }
+    const t = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(t);
   }, []);
 
   const handleQrUpload = async (file?: File) => {
@@ -94,11 +98,24 @@ export default function TransactionOversight() {
     toast({ title: `Transaction ${status}`, description: `Transaction has been processed.` });
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Transaction Oversight</h1>
-        <p className="text-muted-foreground">Approve or reject pending transactions.</p>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Transaction Oversight</h1>
+        <p className="text-sm text-muted-foreground">Lulus/tolak transaksi yang belum diproses.</p>
       </div>
 
       <Card ref={settingsRef as any} id="funding">

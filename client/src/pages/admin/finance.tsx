@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { db } from '@/lib/mock-data'
 import { fmtUSD, toUSD } from '@/lib/utils'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AdminFinance() {
   const [liquidity, setLiquidity] = useState<number>(0)
@@ -27,9 +28,29 @@ export default function AdminFinance() {
     setPnl(arr)
   }, [])
 
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 200); return () => clearTimeout(t) }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-60" />
+        <div className="grid md:grid-cols-3 gap-4">
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+        </div>
+        <div className="grid md:grid-cols-2 gap-6">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Financial Monitoring</h1>
+      <h1 className="text-2xl font-semibold">Financial Monitoring</h1>
 
       <div className="grid md:grid-cols-3 gap-4">
         <Card>

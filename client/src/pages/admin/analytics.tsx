@@ -1,18 +1,33 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { db } from '@/lib/mock-data'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, BarChart, Bar } from 'recharts'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AdminAnalytics() {
   const users = db.getUsers()
   const trades = db.getTrades()
   const growth = useMemo(() => users.map((u,i)=>({ idx: i+1, count: i+1 })), [users])
   const volume = useMemo(() => trades.map((t,i)=>({ idx: i+1, amount: t.amount })), [trades])
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 200); return () => clearTimeout(t) }, [])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <div className="grid md:grid-cols-2 gap-6">
+          <Skeleton className="h-48" />
+          <Skeleton className="h-48" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Analytics & Reports</h1>
+      <h1 className="text-2xl font-semibold">Analytics & Reports</h1>
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card>

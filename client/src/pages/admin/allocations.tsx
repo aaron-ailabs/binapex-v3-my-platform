@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth'
 import { useToast } from '@/hooks/use-toast'
 import { apiRequest } from '@/lib/queryClient'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AdminAllocations() {
   useAuth()
@@ -18,6 +19,8 @@ export default function AdminAllocations() {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 200); return () => clearTimeout(t) }, [])
 
   const requestCode = async () => {
     try {
@@ -45,9 +48,18 @@ export default function AdminAllocations() {
 
   const highValue = Number(amount) >= 100000
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-64" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-amber-500">Admin Fund Allocation</h1>
+      <h1 className="text-2xl font-semibold">Admin Fund Allocation</h1>
       <Card className="border-red-500/30">
         <CardHeader>
           <CardTitle>Allocate Funds</CardTitle>

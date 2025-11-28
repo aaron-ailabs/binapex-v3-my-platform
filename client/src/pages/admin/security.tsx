@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type SecEvent = { id: string; type: string; timestamp: string; ipAddress: string; status: string; details?: string }
 
@@ -11,6 +12,7 @@ export default function AdminSecurity() {
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api'
   const [events, setEvents] = useState<SecEvent[]>([])
   const [twofa] = useState<'enforced'|'optional'|'off'>('optional')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     ;(async () => {
@@ -22,11 +24,27 @@ export default function AdminSecurity() {
         }
       } catch {}
     })()
+    const t = setTimeout(() => setLoading(false), 200)
+    return () => clearTimeout(t)
   }, [apiBase, token])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-56" />
+        <div className="grid md:grid-cols-3 gap-4">
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Security Center</h1>
+      <h1 className="text-2xl font-semibold">Security Center</h1>
       <div className="grid md:grid-cols-3 gap-4">
         <Card>
           <CardHeader><CardTitle>2FA Enforcement</CardTitle></CardHeader>

@@ -1,7 +1,9 @@
 import { db, User, Role, KYCStatus, MembershipTier, Bonus, Wallet } from '@/lib/mock-data';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import PayoutControl from '@/components/admin/PayoutControl';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +22,7 @@ export default function UserManagement() {
   const { user: admin, token } = useAuth();
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [overrideReason, setOverrideReason] = useState<string>('');
@@ -42,6 +45,8 @@ export default function UserManagement() {
 
   useEffect(() => {
     setUsers(db.getUsers());
+    const t = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(t);
   }, []);
 
   
@@ -206,11 +211,23 @@ export default function UserManagement() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between sm:flex-row sm:items-center sm:justify-between flex-col gap-3">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-12 w-64" />
+        </div>
+        <Skeleton className="h-48" />
+        <Skeleton className="h-96" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      
-      <div className="flex items-center justify-between sm:flex-row sm:items-center sm:justify-between flex-col gap-3 stack-sm">
-        <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
+      <div className="flex items-center justify-between sm:flex-row sm:items-center sm:justify-between flex-col gap-3">
+        <h1 className="text-2xl font-semibold">User Management</h1>
         <div className="relative w-full sm:w-64">
            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
            <Input 
@@ -516,30 +533,15 @@ export default function UserManagement() {
                                </div>
                              )}
                             <div className="space-y-2 border-t pt-3">
-                              <Label id="label-user-payout">User Payout Percentage</Label>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
-                                <div className="md:col-span-2 space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <div className="text-xs text-muted-foreground" id="desc-user-payout">Override payout for this user</div>
-                                    <div className="text-sm font-medium" aria-live="polite">{Math.round(selectedUser.payout_percentage ?? 0)}%</div>
-                                  </div>
-                                  <Slider aria-labelledby="label-user-payout" aria-describedby="desc-user-payout" className="touch-manipulation h-12 md:h-8 [&_[data-radix-collection-item]]:h-12 [&_[data-radix-collection-item]]:w-12 md:[&_[data-radix-collection-item]]:h-6 md:[&_[data-radix-collection-item]]:w-6" value={[selectedUser.payout_percentage ?? 0]} onValueChange={(v) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(v[0] || 0))) })} min={0} max={100} step={1} />
-                                </div>
-                                <div className="space-y-1">
-                                  <Input className="h-12" aria-label="Payout percentage" inputMode="numeric" pattern="[0-9]*" placeholder="%" value={String(Math.round(selectedUser.payout_percentage ?? 0))} onChange={(e) => setSelectedUser({ ...selectedUser, payout_percentage: Math.max(0, Math.min(100, Number(e.target.value || 0))) })} />
-                                  <Button aria-label="Save user payout" type="button" className="h-12" onClick={async () => {
-                                    if (!token) { toast({ variant: 'destructive', title: 'Unauthorized', description: 'Login token required.' }); return; }
-                                    const pct = Math.round(selectedUser.payout_percentage ?? 0);
-                                    const r = await fetch(`${apiBase}/admin/users/payout`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ userId: selectedUser.id, payoutPct: pct, reason: overrideReason }) });
-                                    if (!r.ok) { toast({ variant: 'destructive', title: 'Save failed', description: `${r.status}` }); return; }
-                                    const data = await r.json().catch(() => null);
-                                    const val = typeof data?.payoutPct === 'number' ? Number(data.payoutPct) : pct;
-                                    setSelectedUser({ ...selectedUser, payout_percentage: val });
-                                    toast({ title: 'User Payout Updated', description: `${Math.round(val)}%` });
-                                  }}>Save</Button>
-                                </div>
-                              </div>
-                              <Input aria-label="Reason (optional)" placeholder="Reason (optional)" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} />
+                              {selectedUser && (
+                                <PayoutControl 
+                                  userId={selectedUser.id} 
+                                  initialPct={selectedUser.payout_percentage ?? 0} 
+                                  apiBase={apiBase} 
+                                  token={token || ''} 
+                                  onUpdated={(p) => setSelectedUser({ ...selectedUser, payout_percentage: p })}
+                                />
+                              )}
                             </div>
 
                              <Button type="submit" className="w-full h-12">Save Changes</Button>

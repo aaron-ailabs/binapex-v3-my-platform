@@ -3,11 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AdminCompliance() {
   const { token } = useAuth()
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api'
   const [audits] = useState<{ id: string; status: string; startedAt: string }[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     ;(async () => {
@@ -15,11 +17,22 @@ export default function AdminCompliance() {
         await fetch(`${apiBase}/audit/run`, { method: 'POST', headers: { Authorization: token ? `Bearer ${token}` : '' } }).catch(()=>{})
       } catch {}
     })()
+    const t = setTimeout(() => setLoading(false), 200)
+    return () => clearTimeout(t)
   }, [apiBase, token])
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-72" />
+        <Skeleton className="h-48" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Compliance & Auditing</h1>
+      <h1 className="text-2xl font-semibold">Compliance & Auditing</h1>
       <Card>
         <CardHeader><CardTitle>Audit Runs</CardTitle></CardHeader>
         <CardContent>

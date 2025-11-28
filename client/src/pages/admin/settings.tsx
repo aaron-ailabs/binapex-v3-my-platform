@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AdminSettings() {
   const { token } = useAuth();
@@ -14,6 +15,7 @@ export default function AdminSettings() {
   const [decimals, setDecimals] = useState<number>(0);
   const [rounding, setRounding] = useState<'nearest'|'down'|'up'>('nearest');
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -25,6 +27,8 @@ export default function AdminSettings() {
         }
       } catch {}
     })();
+    const t = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(t);
   }, [apiBase, token]);
 
   const saveConfig = async () => {
@@ -39,11 +43,21 @@ export default function AdminSettings() {
     } catch { toast({ variant: 'destructive', title: 'Error', description: 'Failed to save settings.' }); }
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-56" />
+        <div className="grid gap-6 md:grid-cols-2">
+          <Skeleton className="h-56" />
+          <Skeleton className="h-56" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
-        System Settings
-      </h1>
+      <h1 className="text-2xl font-semibold">System Settings</h1>
       
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
