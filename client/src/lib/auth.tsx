@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = (email: string, password?: string) => {
     const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
-    const uname = email.toLowerCase();
+    const uname = (() => { const lower = String(email || '').toLowerCase(); if (lower === 'admin@binapex.com') return 'admin'; if (lower === 'trader@binapex.com') return 'trader'; return lower; })();
     try {
       (async () => {
         try { await fetch(`${apiBase}/csrf`, { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin' }); } catch {}
