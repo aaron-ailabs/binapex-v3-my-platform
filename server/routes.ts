@@ -27,6 +27,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: 'ok' });
   });
 
+  if (String(process.env.ENABLE_DEMO_SEED || '') === '1') {
+    (async () => {
+      try {
+        let admin = await storage.getUserByUsername('admin');
+        if (!admin) {
+          admin = await storage.createUser({ username: 'admin', password: 'password' } as any);
+          await storage.updateUser((admin as any).id, { role: 'Admin' });
+        }
+        let trader = await storage.getUserByUsername('trader');
+        if (!trader) {
+          trader = await storage.createUser({ username: 'trader', password: 'password' } as any);
+          await storage.updateUser((trader as any).id, { role: 'Trader', payoutPct: 85 });
+        }
+        if (trader) {
+          const w = await ensureUsdWallet((trader as any).id);
+          if ('balanceUsd' in w) {
+            (w as any).balanceUsd = Number(((w as any).balanceUsd + 1000).toFixed(2));
+            wallets.set(`${(trader as any).id}:USD`, w as any);
+          } else if (db && 'balanceUsdCents' in w) {
+            try { await db.update(tblWallets).set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${1000 * 100}` }).where(eq(tblWallets.id, (w as any).id)); } catch {}
+          }
+        }
+        if (admin) {
+          const wA = await ensureUsdWallet((admin as any).id);
+          if ('balanceUsd' in wA) {
+            (wA as any).balanceUsd = Number(((wA as any).balanceUsd + 1000).toFixed(2));
+            wallets.set(`${(admin as any).id}:USD`, wA as any);
+          } else if (db && 'balanceUsdCents' in wA) {
+            try { await db.update(tblWallets).set({ balanceUsdCents: dsql`${tblWallets.balanceUsdCents} + ${1000 * 100}` }).where(eq(tblWallets.id, (wA as any).id)); } catch {}
+          }
+        }
+      } catch {}
+    })();
+  }
+
   app.post('/api/demo/seed', async (_req: Request, res: Response) => {
     const enabled = String(process.env.ENABLE_DEMO_SEED || '') === '1'
     if (!enabled) return res.status(403).json({ message: 'Disabled' })

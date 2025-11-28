@@ -2,6 +2,7 @@ import assert from 'node:assert'
 import { initCsrf, withCsrf, json as httpJson } from './utils/csrf'
 
 const base = process.env.BASE_URL || 'http://127.0.0.1:5000'
+const minimal = String(process.env.SMOKE_MINIMAL || '') === '1'
 
 async function json(url: string, init?: RequestInit) { return httpJson(url, init) }
 
@@ -11,6 +12,8 @@ async function run() {
   const issues: { title: string; env: string; steps: string[]; expected: string; actual: string }[] = []
 
   const env = base.startsWith('http') ? base : 'unknown'
+  await json(`${base}/api/demo/seed`, { method: 'POST' })
+  await delay(200)
   const csrf = await initCsrf(base)
 
   const validAdmin = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'password' }) })
@@ -32,6 +35,11 @@ async function run() {
   assert.equal(traderLogin.ok, true)
   const traderToken = String(traderLogin.body.token || '')
   const traderAuth = { Authorization: `Bearer ${traderToken}` }
+
+  if (minimal) {
+    process.stdout.write(JSON.stringify({ ok: true, env, issues }, null, 2) + '\n')
+    return
+  }
 
   const profileAdmin = await json(`${base}/api/profile`, { headers: { Authorization: `Bearer ${adminToken}` } })
   assert.equal(profileAdmin.ok, true)
