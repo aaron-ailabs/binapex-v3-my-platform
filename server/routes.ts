@@ -781,6 +781,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(out);
   });
 
+  const userRoleSchema = z.object({ userId: z.string().min(3).max(64), role: z.enum(['Admin','Trader','Customer Service']) });
+  app.post('/api/admin/users/role', requireAuth, requireRole(['Admin']), requireRateLimit('admin-users-role', 20, 60000), enforceTLS, async (req: Request, res: Response) => {
+    const parsed = userRoleSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid role update data' });
+    const { userId, role } = parsed.data;
+    const u = await storage.getUser(userId);
+    if (!u) return res.status(404).json({ message: 'User not found' });
+    await storage.updateUser(userId, { role });
+    try { adminAudits.push({ id: Math.random().toString(36).slice(2,9), adminId: String(((req as any).user)?.sub || 'unknown'), userId, action: 'role_update', details: JSON.stringify({ role }), timestamp: new Date().toISOString() }); } catch {}
+    res.json({ ok: true, userId, role });
+  });
+
+  const bootstrapSchema = z.object({ username: z.string().email(), password: z.string().min(8).max(256) });
+  app.post('/api/admin/bootstrap', requireRateLimit('bootstrap', 3, 600000), enforceTLS, async (req: Request, res: Response) => {
+    const key = String(req.headers['x-bootstrap-key'] || '');
+    const expected = String(process.env.BOOTSTRAP_KEY || '');
+    if (!expected || key !== expected) return res.status(403).json({ message: 'Forbidden' });
+    const parsed = bootstrapSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: 'Invalid bootstrap data' });
+    const list = await storage.listUsers(undefined, 10);
+    const hasAdmin = list.some(u => String(u.role) === 'Admin');
+    if (hasAdmin) return res.status(409).json({ message: 'Admin already exists' });
+    const username = String(parsed.data.username).toLowerCase();
+    const existing = await storage.getUserByUsername(username);
+    if (existing) return res.status(409).json({ message: 'Email already in use' });
+    const created = await storage.createUser({ username, password: parsed.data.password } as any);
+    await storage.updateUser(created.id, { role: 'Admin' });
+    try { await ensureUsdWallet(created.id); } catch {}
+    const token = signJWT({ sub: created.id, role: 'Admin', username: created.username });
+    res.json({ ok: true, token, role: 'Admin', userId: created.id });
+  });
+
   const ALPHA_KEY = process.env.ALPHAVANTAGE_API_KEY || '';
   app.get('/api/prices/alpha', async (req: Request, res: Response, next: NextFunction) => {
     try {

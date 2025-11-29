@@ -11,6 +11,14 @@ export function requireRateLimit(key: string, max: number, windowMs: number) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const env = (process.env.NODE_ENV || '').toLowerCase()
     if (env === 'development') return next()
+    const bypassHeader = String(req.headers['x-rate-limit-bypass'] || '')
+    const bypassKey = String(process.env.RATE_LIMIT_BYPASS_KEY || '')
+    if (bypassKey && bypassHeader === bypassKey) return next()
+    if (key === 'bootstrap') {
+      const bootstrapHeader = String(req.headers['x-bootstrap-key'] || '')
+      const expectedBootstrap = String(process.env.BOOTSTRAP_KEY || '')
+      if (expectedBootstrap && bootstrapHeader === expectedBootstrap) return next()
+    }
     const now = Date.now()
     const ip = req.ip || req.socket.remoteAddress || 'unknown'
     const rateKey = `${key}:${ip}`
