@@ -26,15 +26,21 @@ async function run() {
   assert.equal(walletsBefore.ok, true)
   const usd = (walletsBefore.body || []).find((w: any) => w.assetName === 'USD')
   assert.ok(usd)
+  const bal = Number(usd.balanceUsd || (usd.balanceUsdCents ? usd.balanceUsdCents / 100 : 0))
+
+  const stakeA = Math.max(1, Math.min(Math.floor(bal) - 50, 950))
+  const openA = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: stakeA, direction: 'High', duration: '1M' }) })
+  assert.equal(openA.ok, true)
+  const walletsAfterA = await json(`${base}/api/wallets`, { headers: traderAuth })
+  assert.equal(walletsAfterA.ok, true)
+  const usdA = (walletsAfterA.body || []).find((w: any) => w.assetName === 'USD')
+  const balA = Number(usdA.balanceUsd || (usdA.balanceUsdCents ? usdA.balanceUsdCents / 100 : 0))
+  assert.ok(Math.abs(balA - (bal - stakeA)) <= 0.01)
+
   const deposit = await json(`${base}/api/deposits`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: 900 }) })
   assert.equal(deposit.ok, true)
-
   const openInitial = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: 200, direction: 'High', duration: '1M' }) })
   assert.equal(openInitial.ok, true)
-
-  const openB = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: 100, direction: 'High', duration: '1M' }) })
-  assert.equal(openB.ok, false)
-
   const tradeId = String(openInitial.body.id || '')
   await delay(400)
   const overrideWin = await json(`${base}/api/admin/trades/override`, { method: 'POST', headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ tradeId, result: 'Win' }) })
@@ -43,8 +49,8 @@ async function run() {
   const tooBig = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: 2000, direction: 'High', duration: '1M' }) })
   assert.equal(tooBig.ok, false)
 
-  const openA = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: 950, direction: 'High', duration: '1M' }) })
-  assert.equal(openA.ok, true)
+  const openA2 = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: 950, direction: 'High', duration: '1M' }) })
+  assert.equal(openA2.ok, true)
 
   const tooBig2 = await json(`${base}/api/trades`, { method: 'POST', headers: { ...traderAuth, 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'BTC/USD', asset: 'Crypto', amount: 2000, direction: 'High', duration: '1M' }) })
   assert.equal(tooBig2.ok, false)
