@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -57,9 +56,8 @@
 }
 
 :root {
-  /* Default Dark Theme "Binapex" - Black & Gold Executive */
-  --background: 230 25% 5%; /* Rich near-black */
-  --foreground: 42 33% 92%; /* Warm off-white */
+  --background: 230 25% 5%;
+  --foreground: 42 33% 92%;
 
   --card: 229 21% 10%;
   --card-foreground: 42 33% 92%;
@@ -67,7 +65,7 @@
   --popover: 229 21% 8%;
   --popover-foreground: 42 33% 92%;
 
-  --primary: 44 77% 56%; /* Luxe gold */
+  --primary: 44 77% 56%;
   --primary-foreground: 229 45% 10%;
 
   --secondary: 220 15% 13%;
@@ -76,13 +74,13 @@
   --muted: 220 15% 18%;
   --muted-foreground: 42 15% 70%;
 
-  --accent: 39 66% 53%; /* Soft amber for accents */
+  --accent: 39 66% 53%;
   --accent-foreground: 229 45% 10%;
 
   --destructive: 359 82% 60%;
   --destructive-foreground: 33 26% 96%;
 
-  --border: 220 16% 25%; 
+  --border: 220 16% 25%;
   --input: 220 16% 20%;
   --ring: 44 77% 56%;
 
@@ -147,3 +145,50 @@
     @apply font-heading;
   }
 }
+
+[data-platform="ios"] { --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+[data-platform="android"] { --font-sans: Roboto, "Noto Sans", "Segoe UI", Arial, sans-serif; }
+[data-platform="ios"] body { -webkit-overflow-scrolling: touch; }
+[data-platform="android"] body { overscroll-behavior-y: contain; }
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body { -webkit-tap-highlight-color: transparent; }
+  img, video { max-width: 100%; height: auto; }
+  @supports(padding: env(safe-area-inset-top)) {
+    body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  }
+}
+
+@layer components {
+  .touch-target { min-width: 48px; min-height: 48px; }
+  .text-wrap { overflow-wrap: anywhere; word-break: break-word; }
+}
+
+@media (max-width: 414px) {
+  :root { --radius: 0.9rem; }
+  body { font-size: 16px; line-height: 1.5; }
+  /* Ensure touch targets are large enough, but respect existing padding/flex layout */
+  button, [role="button"], .btn { min-height: 48px; min-width: 48px; }
+  input, select, textarea { font-size: 16px; min-height: 48px; }
+  .stack-sm { display: flex; flex-direction: column; gap: 12px; }
+}
+
+@media (max-width: 768px) {
+  .mobile-container { padding: 12px; }
+  .mobile-table { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce), (max-width: 414px) {
+  * { animation-duration: 150ms !important; transition-duration: 150ms !important; }
+}
+
+[data-platform="ios"] .btn, [data-platform="ios"] button { border-radius: var(--radius-xl); }
+[data-platform="android"] .btn, [data-platform="android"] button { border-radius: var(--radius-md); }
+
+/* reverted gold-specific utility classes */
+
+@keyframes float1 { 0% { transform: translate3d(0,0,0) } 50% { transform: translate3d(24px,-32px,0) } 100% { transform: translate3d(0,0,0) } }
+@keyframes float2 { 0% { transform: translate3d(0,0,0) } 50% { transform: translate3d(-28px,20px,0) } 100% { transform: translate3d(0,0,0) } }
+[data-platform="android"] .btn:active { box-shadow: 0 2px 6px rgba(0,0,0,0.25); transform: scale(0.99); }
+[data-platform="ios"] .btn:active { opacity: 0.9; }

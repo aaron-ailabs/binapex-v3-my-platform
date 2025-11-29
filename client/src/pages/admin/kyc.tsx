@@ -1,18 +1,22 @@
 import { db, KYCSubmission } from '@/lib/mock-data';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useState, useEffect } from 'react';
-import { Check, X, Eye } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function KYCQueue() {
   const { toast } = useToast();
   const [submissions, setSubmissions] = useState<KYCSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setSubmissions(db.getKYCSubmissions().filter(k => k.status === 'Pending'));
+    const t = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(t);
   }, []);
 
   const handleReview = (id: string, status: 'Approved' | 'Rejected') => {
@@ -37,11 +41,23 @@ export default function KYCQueue() {
      });
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">KYC Verification Queue</h1>
-        <p className="text-muted-foreground">Review pending identity documents.</p>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">KYC Verification Queue</h1>
+        <p className="text-sm text-muted-foreground">Semak dokumen identiti yang belum selesai.</p>
       </div>
 
       <Card>

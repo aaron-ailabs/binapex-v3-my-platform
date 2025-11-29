@@ -1,6 +1,7 @@
 import { db } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, AlertCircle, CreditCard, ArrowUpRight } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Users, AlertCircle, CreditCard } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export default function AdminDashboard() {
@@ -9,6 +10,7 @@ export default function AdminDashboard() {
     pendingKYC: 0,
     pendingWithdrawals: 0,
   });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const users = db.getUsers();
@@ -20,13 +22,31 @@ export default function AdminDashboard() {
       pendingKYC: kycs.length,
       pendingWithdrawals: withdrawals.length,
     });
+    const timer = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(timer);
   }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+          <Skeleton className="h-28" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-        <p className="text-muted-foreground">Platform overview and alerts.</p>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
+        <p className="text-sm text-muted-foreground">Ringkasan platform dan amaran.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

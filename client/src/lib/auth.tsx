@@ -34,79 +34,107 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = (email: string, password?: string) => {
-    const found = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (found) {
-      // Verify password (mock check)
-      if (password && found.password && found.password !== password) {
-        toast({
-          variant: "destructive",
-          title: "Invalid Credentials",
-          description: "The password you entered is incorrect.",
-        });
-        return false;
-      }
-      try {
-        const uname = email.includes('@') ? email.split('@')[0] : email;
-        const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
-        fetch(`${apiBase}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: uname, password: password || found.password || 'password' })
-        }).then(async (r) => {
-          if (r.ok) {
-            const data = await r.json();
-            setToken(data.token);
-            localStorage.setItem('binapex_token', data.token);
+    const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+    const allowNoCsrf = String((import.meta as any).env.VITE_ALLOW_LOGIN_WITHOUT_CSRF || '') === '1';
+    const uname = (() => { const lower = String(email || '').toLowerCase(); if (lower === 'admin@binapex.com') return 'admin'; if (lower === 'trader@binapex.com') return 'trader'; return lower; })();
+    try {
+      (async () => {
+        if (!allowNoCsrf) {
+          let ok = false;
+          for (let i = 0; i < 5; i++) {
+            try {
+              const r = await fetch(`${apiBase}/csrf`, { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+              if (r.ok) { ok = true; break; }
+              if (r.status === 429 || r.status === 503) { await new Promise(r => setTimeout(r, 300 + i * 250)); continue; }
+              break;
+            } catch { await new Promise(r => setTimeout(r, 300 + i * 250)); }
           }
-        }).catch(() => {});
-      } catch {}
-      setUser(found);
-      localStorage.setItem('binapex_user_id', found.id);
-      toast({
-        title: "Welcome back",
-        description: `Logged in as ${found.name}`,
-      });
-      
-      // Redirect based on role
-      if (found.role === 'Admin') setLocation('/admin');
-      else if (found.role === 'Customer Service') setLocation('/cs');
-      else setLocation('/dashboard');
-      return true;
-    } else {
-      toast({
-        variant: "destructive",
-        title: "Login Failed",
-        description: "User not found.",
-      });
+          if (!ok) {
+            toast({ variant: "destructive", title: "Network Issue", description: "Please wait a moment and try again." });
+          }
+        }
+        const xsrf = (() => {
+          try {
+            const m = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
+            return m ? decodeURIComponent(m.split('=')[1] || '') : '';
+          } catch { return ''; }
+        })();
+        let r: Response | undefined;
+        for (let i = 0; i < 5; i++) {
+          try {
+            const rr = await fetch(`${apiBase}/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(xsrf ? { 'X-CSRF-Token': xsrf } : {}) },
+              body: JSON.stringify({ username: uname, password: password || 'password' })
+            });
+            r = rr;
+            if (rr.ok) break;
+            if (rr.status === 429 || rr.status === 503) { await new Promise(r => setTimeout(r, 300 + i * 250)); continue; }
+            break;
+          } catch { await new Promise(r => setTimeout(r, 300 + i * 250)); }
+        }
+        try {
+          const data = await (r as Response).json();
+          if (!(r as Response).ok || !data?.token) {
+          const found = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
+          if (!found) {
+            toast({ variant: "destructive", title: "Login Failed", description: "Invalid credentials." });
+            return;
+          }
+          setUser(found);
+          localStorage.setItem('binapex_user_id', found.id);
+          toast({ title: "Welcome back", description: `Logged in as ${found.name}` });
+          if (found.role === 'Admin') setLocation('/admin');
+          else if (found.role === 'Customer Service') setLocation('/cs');
+          else setLocation('/dashboard');
+          return;
+          }
+          setToken(data.token);
+          localStorage.setItem('binapex_token', data.token);
+          const role: any = data.role || 'Trader';
+          const fallbackUser: User = { id: data.userId || Math.random().toString(36).slice(2,9), email, name: email.includes('@') ? email.split('@')[0] : email, role, kyc_status: 'Not Started', membership_tier: 'Silver' } as any;
+          setUser(fallbackUser);
+          localStorage.setItem('binapex_user_id', fallbackUser.id);
+          toast({ title: "Welcome back", description: `Logged in as ${fallbackUser.name}` });
+          if (role === 'Admin') setLocation('/admin');
+          else if (role === 'Customer Service') setLocation('/cs');
+          else setLocation('/dashboard');
+        } catch {
+          toast({ variant: "destructive", title: "Network Error", description: "Unable to login." });
+        }
+      })();
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Login failed." });
       return false;
     }
+    return true;
   };
 
   const register = (name: string, email: string, password: string, phone?: string) => {
-    const existing = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (existing) {
-      toast({
-        variant: "destructive",
-        title: "Registration Failed",
-        description: "Email already in use.",
-      });
-      return;
-    }
-
-    const newUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      email,
-      name,
-      password,
-      role: 'Trader', // Default role
-      kyc_status: 'Not Started',
-      membership_tier: 'Silver',
-      phone
-    };
-
-    db.addUser(newUser);
-    login(email, password);
+    const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+    fetch(`${apiBase}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    }).then(async (r) => {
+      let data: any = null;
+      try { data = await r.json(); } catch {}
+      if (!r.ok || !data?.token) {
+        toast({ variant: "destructive", title: "Registration Failed", description: data?.message || "Unable to create account." });
+        return;
+      }
+      setToken(data.token);
+      localStorage.setItem('binapex_token', data.token);
+      const role: any = data.role || 'Trader';
+      const u: User = { id: data.userId || Math.random().toString(36).slice(2,9), email, name, role, kyc_status: 'Not Started', membership_tier: 'Silver', phone } as any;
+      setUser(u);
+      localStorage.setItem('binapex_user_id', u.id);
+      toast({ title: "Account Created", description: `Welcome, ${name}` });
+      if (role === 'Admin') setLocation('/admin');
+      else setLocation('/dashboard');
+    }).catch(() => {
+      toast({ variant: "destructive", title: "Network Error", description: "Unable to register." });
+    });
   };
 
   const logout = () => {

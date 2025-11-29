@@ -8,20 +8,15 @@ import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect, useState } from 'react';
-<<<<<<< HEAD
+import { useEffect, useState, FormEvent, ChangeEvent } from 'react';
 import { Eye, EyeOff, Shield, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
 export default function Security() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<User | null>(null);
-<<<<<<< HEAD
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
-  
-  // Withdrawal password state
+  const { token } = useAuth();
   const [withdrawalPassword, setWithdrawalPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,16 +31,12 @@ export default function Security() {
   const [verificationChannel, setVerificationChannel] = useState<'email' | 'sms'>('email');
   const [verificationCode, setVerificationCode] = useState('');
   const [events, setEvents] = useState<any[]>([]);
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
-  const handlePasswordUpdate = (e: React.FormEvent) => {
+  const handlePasswordUpdate = (e: FormEvent) => {
     e.preventDefault();
     toast({ title: 'Password Updated', description: 'Your password has been changed successfully.' });
   };
 
-<<<<<<< HEAD
-  // Validate withdrawal password
   const validatePassword = (password: string) => {
     const requirements = {
       length: password.length >= 8,
@@ -54,42 +45,28 @@ export default function Security() {
       number: /[0-9]/.test(password),
       special: /[^A-Za-z0-9]/.test(password)
     };
-    
     const strength = Object.values(requirements).filter(Boolean).length * 20;
-    
     setPasswordRequirements(requirements);
     setPasswordStrength(strength);
-    
     return Object.values(requirements).every(Boolean);
   };
 
-  const handleWithdrawalPasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleWithdrawalPasswordChange = (e: ChangeEvent<HTMLInputElement>) => {
     const password = e.target.value;
     setWithdrawalPassword(password);
     validatePassword(password);
   };
 
-  const handleSetWithdrawalPassword = async (e: React.FormEvent) => {
+  const handleSetWithdrawalPassword = async (e: FormEvent) => {
     e.preventDefault();
-    
     if (!validatePassword(withdrawalPassword)) {
-      toast({
-        variant: 'destructive',
-        title: 'Weak Password',
-        description: 'Please meet all password requirements.'
-      });
+      toast({ variant: 'destructive', title: 'Weak Password', description: 'Please meet all password requirements.' });
       return;
     }
-    
     if (withdrawalPassword !== confirmPassword) {
-      toast({
-        variant: 'destructive',
-        title: 'Passwords Mismatch',
-        description: 'Passwords do not match.'
-      });
+      toast({ variant: 'destructive', title: 'Passwords Mismatch', description: 'Passwords do not match.' });
       return;
     }
-    
     try {
       const res = await fetch(`${apiBase}/security/withdrawal-password`, {
         method: 'POST',
@@ -111,9 +88,6 @@ export default function Security() {
       toast({ variant: 'destructive', title: 'Error', description: error?.message || 'Failed to set withdrawal password.' });
     }
   };
-
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   useEffect(() => {
     if (user) {
       setProfile(user);
@@ -125,15 +99,12 @@ export default function Security() {
           db.updateUser(updated);
         })
         .catch(() => {});
-<<<<<<< HEAD
       fetch(`${apiBase}/security/events`, { headers: { Authorization: `Bearer ${localStorage.getItem('binapex_token') || ''}` } })
         .then(r => r.ok ? r.json() : [])
         .then(setEvents)
         .catch(() => {});
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     }
-  }, [user]);
+  }, [user, apiBase]);
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -149,24 +120,53 @@ export default function Security() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Phone Number</Label>
-            <Input value={profile?.phone || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : prev)} />
+            <Label>Profile Picture</Label>
+            <input type="file" accept="image/*" onChange={async (e) => {
+              try {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const img = new Image();
+                img.onload = async () => {
+                  const size = Math.min(img.width, img.height);
+                  const sx = Math.floor((img.width - size)/2);
+                  const sy = Math.floor((img.height - size)/2);
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 256; canvas.height = 256;
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  ctx.imageSmoothingQuality = 'high';
+                  ctx.drawImage(img, sx, sy, size, size, 0, 0, 256, 256);
+                  const dataUrl = canvas.toDataURL('image/png');
+                  const r = await fetch(`${apiBase}/profile/avatar`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify({ dataUrl }) });
+                  if (r.ok) toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated.' });
+                  else toast({ variant: 'destructive', title: 'Upload Failed' });
+                };
+                img.src = URL.createObjectURL(file);
+              } catch { toast({ variant: 'destructive', title: 'Upload Failed' }); }
+            }} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Bank Name</Label>
-              <Input value={profile?.bank_account?.bank_name || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, bank_account: { ...(prev.bank_account || { bank_name: '', account_number: '' }), bank_name: e.target.value } } : prev)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Account Number</Label>
-              <Input value={profile?.bank_account?.account_number || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, bank_account: { ...(prev.bank_account || { bank_name: '', account_number: '' }), account_number: e.target.value } } : prev)} />
-            </div>
+          <div className="space-y-2">
+            <Label>Phone Number</Label>
+            <Input inputMode="tel" enterKeyHint="done" value={profile?.phone || ''} onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : prev)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Bank Details</Label>
+            <p className="text-xs text-muted-foreground">Manage withdrawal bank and destination details under Withdrawals.</p>
+            <Button variant="outline" onClick={() => { window.location.href = '/withdrawals'; }}>Go to Withdrawals</Button>
           </div>
           <div className="space-y-2">
             <Label>Detected IP Address</Label>
             <Input value={profile?.ip_address || ''} disabled />
           </div>
-          <Button onClick={() => { if (profile) { db.updateUser(profile); toast({ title: 'Profile Saved', description: 'Additional info updated.' }); } }}>Save Profile</Button>
+          <Button onClick={async () => {
+            if (!profile) return;
+            try {
+              const body: any = { phone: profile.phone };
+              const r = await fetch(`${apiBase}/profile`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' }, body: JSON.stringify(body) });
+              if (r.ok) { db.updateUser(profile); toast({ title: 'Profile Saved', description: 'Additional info updated.' }); }
+              else { toast({ variant: 'destructive', title: 'Save Failed' }); }
+            } catch { toast({ variant: 'destructive', title: 'Save Failed' }); }
+          }}>Save Profile</Button>
         </CardContent>
       </Card>
 

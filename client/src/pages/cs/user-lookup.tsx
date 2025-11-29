@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -17,7 +17,7 @@ export default function UserLookup() {
     transactions: Transaction[];
   } | null>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = (e: FormEvent) => {
     e.preventDefault();
     const users = db.getUsers();
     const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());

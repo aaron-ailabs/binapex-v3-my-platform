@@ -1,8 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import bcrypt from 'bcryptjs'
 
 // Environment variables for encryption - should be set in production
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-encryption-key-for-development-only';
-const SALT = process.env.ENCRYPTION_SALT || 'default-salt-for-development-only';
+const isDev = (process.env.NODE_ENV || '').toLowerCase() === 'development';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || (isDev ? 'default-encryption-key-for-development-only' : '');
+const SALT = process.env.ENCRYPTION_SALT || (isDev ? 'default-salt-for-development-only' : '');
 
 // Generate a secure key from the encryption key and salt
 export const generateKey = (): Buffer => {
@@ -44,16 +46,14 @@ export const decrypt = (encrypted: string, iv: string, authTag: string): string 
 
 // Hash password with salt (for withdrawal password)
 export const hashPassword = (password: string): string => {
-  const salt = randomBytes(16).toString('hex');
-  const key = scryptSync(password, salt, 64); // 64 bytes for strong hash
-  return `${salt}:${key.toString('hex')}`;
+  const salt = bcrypt.genSaltSync(12);
+  const hash = bcrypt.hashSync(password, salt);
+  return hash;
 };
 
 // Verify hashed password
 export const verifyPassword = (password: string, hashed: string): boolean => {
-  const [salt, storedKey] = hashed.split(':');
-  const key = scryptSync(password, salt, 64);
-  return key.toString('hex') === storedKey;
+  try { return bcrypt.compareSync(password, hashed); } catch { return false; }
 };
 
 // Generate secure random token for verification

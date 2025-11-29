@@ -1,24 +1,39 @@
-import { db, SupportTicket } from '@/lib/mock-data';
+import { useAuth } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquare } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js'
 import { useToast } from '@/hooks/use-toast';
 
 export default function CSDashboard() {
   const { toast } = useToast();
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  useAuth();
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string) || ''
+  const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ''
+  const supabase = (supabaseUrl && supabaseAnonKey) ? createClient(supabaseUrl, supabaseAnonKey) : null
   const [presence, setPresence] = useState<{status: 'online'|'away'|'offline', waitTimeMins?: number}>({status:'offline'});
   const [sessionId, setSessionId] = useState<string>('');
-  const [messages, setMessages] = useState<{sender: 'trader'|'agent'|'ai', text?: string, timestamp: number}[]>([]);
+  const [messages, setMessages] = useState<{id?: string; sender: 'trader'|'agent'|'ai', text?: string, timestamp: number, readBy?: string[]}[]>([]);
   const [chatInput, setChatInput] = useState('');
-  const wsRef = useRef<WebSocket | null>(null);
+  const chatChannelRef = useRef<any>(null)
+  const presenceChannelRef = useRef<any>(null)
+  const [sessions, setSessions] = useState<{ id: string; participants: number }[]>([]);
+  const typingTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setTickets(db.getTickets().filter(t => t.status === 'Open'));
-  }, []);
+    async function loadSessions() {
+      try {
+        const r = await fetch('/api/chat/sessions');
+        const j = await r.json();
+        setSessions(Array.isArray(j?.items) ? j.items : []);
+      } catch {}
+    }
+    loadSessions();
+    const t = setInterval(loadSessions, 3000);
+    return () => clearInterval(t);
+  }, [supabase]);
 
   useEffect(() => {
     async function loadPresence() {
@@ -28,16 +43,19 @@ export default function CSDashboard() {
       } catch {}
     }
     loadPresence();
-  }, []);
+    if (supabase) {
+      try {
+        const ch = supabase.channel('presence')
+        ch.on('broadcast', { event: 'presence' }, (payload) => {
+          setPresence(payload.payload)
+        })
+        ch.subscribe()
+        presenceChannelRef.current = ch
+      } catch {}
+    }
+  }, [supabase]);
 
-  const handleClose = (id: string) => {
-     const ticket = tickets.find(t => t.id === id);
-     if (!ticket) return;
-     
-     db.updateTicket({ ...ticket, status: 'Closed' });
-     setTickets(prev => prev.filter(t => t.id !== id));
-     toast({ title: 'Ticket Closed', description: 'Ticket marked as resolved.' });
-  };
+  
 
   const setOnline = async () => {
     const res = await fetch('/api/support/presence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'online', waitTimeMins: 0 }) });
@@ -58,72 +76,69 @@ export default function CSDashboard() {
   const joinSession = () => {
     if (!sessionId) return;
     try {
-      const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?sessionId=${sessionId}&role=agent`);
-      wsRef.current = ws;
-      ws.onmessage = (ev) => {
-        try {
-          const payload = JSON.parse(ev.data);
-          if (payload.type === 'message') {
-            const d = payload.data;
-            setMessages((prev) => [...prev, { sender: d.sender, text: d.text, timestamp: d.timestamp }]);
-          }
-        } catch {}
-      };
-      ws.onopen = () => {
-        toast({ title: 'Joined Session', description: `Session ${sessionId}` });
-      };
-      ws.onclose = () => {
-        toast({ variant: 'destructive', title: 'Disconnected', description: 'Session closed' });
-      };
+      if (!supabase) {
+        toast({ variant: 'destructive', title: 'Realtime unavailable', description: 'Supabase not configured' })
+        return
+      }
+      const ch = supabase.channel(`chat:${sessionId}`)
+      ch.on('broadcast', { event: 'message' }, (payload) => {
+        const d: any = payload.payload || {}
+        setMessages((prev) => [...prev, { id: d.id, sender: d.sender, text: d.text, timestamp: d.timestamp, readBy: d.readBy || [] }])
+      })
+      ch.on('broadcast', { event: 'read' }, (payload) => {
+        const { messageId, userId: reader } = (payload.payload || {})
+        setMessages((prev) => prev.map((m) => m.id === messageId ? { ...m, readBy: Array.isArray(m.readBy) ? (m.readBy!.includes(reader) ? m.readBy! : [...m.readBy!, reader]) : [reader] } : m))
+      })
+      ch.on('broadcast', { event: 'typing' }, () => { /* optional typing indicator for agent */ })
+      ch.subscribe()
+      chatChannelRef.current = ch
+      toast({ title: 'Joined Session', description: `Session ${sessionId}` })
     } catch {}
   };
 
   const sendChat = () => {
     const text = chatInput.trim();
-    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ type: 'message', text }));
+    if (!text) return;
+    try { chatChannelRef.current?.send({ type: 'broadcast', event: 'message', payload: { sender: 'agent', sessionId, text, timestamp: Date.now() } }) } catch {}
     setMessages((prev) => [...prev, { sender: 'agent', text, timestamp: Date.now() }]);
     setChatInput('');
+  };
+
+  const sendTyping = () => {
+    try { chatChannelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { sender: 'agent', sessionId } }) } catch {}
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">CS Dashboard</h1>
-        <p className="text-muted-foreground">Support ticket queue & live presence.</p>
+        <h1 className="text-3xl font-bold tracking-tight">CS Live Chat</h1>
+        <p className="text-muted-foreground">Real-time peer-to-peer support.</p>
       </div>
 
       <Card>
-        <CardContent className="p-0">
+        <CardHeader>
+          <CardTitle>Active Sessions</CardTitle>
+        </CardHeader>
+        <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>User ID</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Message</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Session ID</TableHead>
+                <TableHead>Participants</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tickets.length === 0 && (
-                 <TableRow>
-                    <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">No open tickets.</TableCell>
-                 </TableRow>
+              {sessions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center h-24 text-muted-foreground">No active sessions</TableCell>
+                </TableRow>
               )}
-              {tickets.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-mono text-xs">{t.id}</TableCell>
-                  <TableCell>{t.user_id}</TableCell>
-                  <TableCell className="font-medium">{t.subject}</TableCell>
-                  <TableCell className="max-w-[300px] truncate text-muted-foreground">{t.message}</TableCell>
-                  <TableCell>{new Date(t.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell className="text-right">
-                     <Button size="sm" onClick={() => handleClose(t.id)}>
-                        Resolve
-                     </Button>
-                  </TableCell>
+              {sessions.map(s => (
+                <TableRow key={s.id}>
+                  <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                  <TableCell>{s.participants}</TableCell>
+                  <TableCell className="text-right"><Button size="sm" onClick={() => { setSessionId(s.id); joinSession(); }}>Join</Button></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -161,12 +176,15 @@ export default function CSDashboard() {
                 <div className={m.sender === 'agent' ? 'inline-block bg-primary text-black px-3 py-2 rounded-2xl' : 'inline-block bg-white/10 text-white px-3 py-2 rounded-2xl'}>
                   {m.text}
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">{new Date(m.timestamp).toLocaleTimeString()}</div>
+                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                  {new Date(m.timestamp).toLocaleTimeString()}
+                  {m.sender === 'agent' && Array.isArray(m.readBy) && m.readBy.length > 0 ? <span title="Read"><span>✓✓</span></span> : null}
+                </div>
               </div>
             ))}
           </div>
           <div className="flex items-center gap-2 mt-3">
-            <input className="border rounded px-2 py-1 flex-1 bg-background" placeholder="Type a message…" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
+            <input className="border rounded px-2 py-1 flex-1 bg-background" placeholder="Type a message…" value={chatInput} onChange={(e) => { setChatInput(e.target.value); if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current); typingTimerRef.current = window.setTimeout(() => sendTyping(), 150); }} onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }} />
             <Button onClick={sendChat}>Send</Button>
           </div>
         </CardContent>

@@ -123,6 +123,13 @@ The Binapex trading platform has undergone a comprehensive audit covering busine
 
 ## Performance Analysis
 
+## Stock Assets Update
+
+- Stock trading coverage expanded to include `NASDAQ:NVDA`, `NASDAQ:TSLA`, `NASDAQ:AAPL`, `NASDAQ:META`, `NASDAQ:AMZN`, `NASDAQ:PLTR`, `NASDAQ:MSFT`, `NASDAQ:NFLX`, `NYSE:BABA`.
+- Client widgets updated to use TradingView Symbol Overview for stocks with candlesticks, volume, and MA(9) in dark theme.
+- Server seeding now includes these tickers under `market: 'Stocks'`, preserving existing asset structure and endpoints.
+- Backward compatibility maintained; no breaking changes to data models or business logic interfaces.
+
 ### Response Times
 - Health Check: 4ms ✅
 - API Endpoints: Variable (needs optimization)
@@ -202,3 +209,8 @@ The Binapex platform demonstrates solid architectural foundations but requires s
 ---
 
 *This audit report should be reviewed with the development team and corrective actions should be prioritized based on business requirements and risk tolerance.*
+- ## Forex Assets Update
+
+- Added forex instruments: `BLACKBULL:EURUSD`, `BLACKBULL:GBPUSD`, `BLACKBULL:USDJPY`, `BLACKBULL:GBPJPY`, `BLACKBULL:AUDUSD`, `BLACKBULL:USDCHF`, `BLACKBULL:NZDUSD`, `BLACKBULL:USDSGD`, `FX_IDC:MYRUSD`, `FX_IDC:MYRTHB`.
+- Live Trading uses TradingView Symbol Overview for Forex with candlesticks, volume, and MA(9) in dark theme.
+- Server seeding includes legacy `FX:` tickers alongside new provider tickers to maintain backward compatibility.
