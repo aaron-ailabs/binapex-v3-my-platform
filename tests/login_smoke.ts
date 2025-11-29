@@ -3,6 +3,7 @@ import { initCsrf, withCsrf, json as httpJson } from './utils/csrf'
 
 const base = process.env.BASE_URL || 'http://127.0.0.1:5000'
 const minimal = String(process.env.SMOKE_MINIMAL || '') === '1'
+const disableTestCsrf = String(process.env.DISABLE_TEST_CSRF || '') === '1'
 
 async function json(url: string, init?: RequestInit) { return httpJson(url, init) }
 
@@ -14,23 +15,23 @@ async function run() {
   const env = base.startsWith('http') ? base : 'unknown'
   await json(`${base}/api/demo/seed`, { method: 'POST' })
   await delay(200)
-  const csrf = await initCsrf(base)
+  const csrf = disableTestCsrf ? { cookie: '', token: '' } : await initCsrf(base)
 
-  const validAdmin = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'password' }) })
+  const validAdmin = await json(`${base}/api/auth/login`, { method: 'POST', headers: disableTestCsrf ? { 'Content-Type': 'application/json' } : withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'password' }) })
   if (!validAdmin.ok) issues.push({ title: 'Admin login failed', env, steps: ['GET /api/csrf', 'POST /api/auth/login {admin/password}'], expected: '200 with token', actual: `${validAdmin.status}:${JSON.stringify(validAdmin.body)}` })
   assert.equal(validAdmin.ok, true)
   const adminToken = String(validAdmin.body.token || '')
 
-  const invalidPwd = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'wrong' }) })
+  const invalidPwd = await json(`${base}/api/auth/login`, { method: 'POST', headers: disableTestCsrf ? { 'Content-Type': 'application/json' } : withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'admin', password: 'wrong' }) })
   assert.equal(invalidPwd.ok, false)
 
-  const invalidFormat = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'a', password: 'short' }) })
+  const invalidFormat = await json(`${base}/api/auth/login`, { method: 'POST', headers: disableTestCsrf ? { 'Content-Type': 'application/json' } : withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'a', password: 'short' }) })
   assert.equal(invalidFormat.ok, false)
 
-  const missingBody = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({}) })
+  const missingBody = await json(`${base}/api/auth/login`, { method: 'POST', headers: disableTestCsrf ? { 'Content-Type': 'application/json' } : withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({}) })
   assert.equal(missingBody.ok, false)
 
-  const traderLogin = await json(`${base}/api/auth/login`, { method: 'POST', headers: withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'trader', password: 'password' }) })
+  const traderLogin = await json(`${base}/api/auth/login`, { method: 'POST', headers: disableTestCsrf ? { 'Content-Type': 'application/json' } : withCsrf(csrf, { 'Content-Type': 'application/json' }), body: JSON.stringify({ username: 'trader', password: 'password' }) })
   if (!traderLogin.ok) issues.push({ title: 'Trader login failed', env, steps: ['GET /api/csrf', 'POST /api/auth/login {trader/password}'], expected: '200 with token', actual: `${traderLogin.status}:${JSON.stringify(traderLogin.body)}` })
   assert.equal(traderLogin.ok, true)
   const traderToken = String(traderLogin.body.token || '')

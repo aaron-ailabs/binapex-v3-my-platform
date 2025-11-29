@@ -3,10 +3,16 @@ import assert from 'node:assert'
 const base = process.env.BASE_URL || 'http://127.0.0.1:5000'
 
 async function json(url: string, init: RequestInit = {}) {
-  const r = await fetch(url, init)
-  const ct = r.headers.get('content-type') || ''
-  const body = ct.includes('application/json') ? await r.json() : await r.text()
-  return { ok: r.ok, status: r.status, body }
+  let r: Response | undefined
+  for (let i = 0; i < 5; i++) {
+    const rr = await fetch(url, init)
+    if (rr.ok) { r = rr; break }
+    if (rr.status === 429 || rr.status === 503) { await new Promise(r => setTimeout(r, 300 + i * 200)); continue }
+    r = rr; break
+  }
+  const ct = (r as Response).headers.get('content-type') || ''
+  const body = ct.includes('application/json') ? await (r as Response).json() : await (r as Response).text()
+  return { ok: (r as Response).ok, status: (r as Response).status, body }
 }
 
 async function run() {
