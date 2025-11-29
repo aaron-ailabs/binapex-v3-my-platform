@@ -1043,15 +1043,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (amt > maxAmt) return res.status(403).json({ message: 'Maximum trade size exceeded' });
 
       const w = await ensureUsdWallet(userId);
-      let balance = 0;
-      if ('balanceUsd' in w) balance = Number(w.balanceUsd);
-      if ('balanceUsdCents' in w) balance = Number(w.balanceUsdCents) / 100;
-
-      if (balance < amt) {
-        return res.status(403).json({ message: 'Insufficient balance' });
-      }
-
-      // Deduct stake immediately
       let deductionSuccess = false;
       if (hasSupabase && sb) {
         try {
@@ -1073,9 +1064,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
            if (res.length > 0) deductionSuccess = true;
         } catch {}
       } else {
-        await withWalletLock(userId, () => {
-          if ((w as any).balanceUsd >= amt) {
-            (w as any).balanceUsd = Number(((w as any).balanceUsd - amt).toFixed(2));
+        await withWalletLock(userId, async () => {
+          const curr = Number((w as any).balanceUsd || 0);
+          if (curr >= amt) {
+            (w as any).balanceUsd = Number((curr - amt).toFixed(2));
             wallets.set(`${userId}:USD`, w as any);
             deductionSuccess = true;
           }
