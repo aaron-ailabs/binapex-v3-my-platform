@@ -35,24 +35,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = (email: string, password?: string) => {
     const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+    const allowNoCsrf = String((import.meta as any).env.VITE_ALLOW_LOGIN_WITHOUT_CSRF || '') === '1';
     const uname = (() => { const lower = String(email || '').toLowerCase(); if (lower === 'admin@binapex.com') return 'admin'; if (lower === 'trader@binapex.com') return 'trader'; return lower; })();
     try {
       (async () => {
-        try { await fetch(`${apiBase}/csrf`, { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin' }); } catch {}
+        if (!allowNoCsrf) {
+          let ok = false;
+          for (let i = 0; i < 5; i++) {
+            try {
+              const r = await fetch(`${apiBase}/csrf`, { method: 'GET', headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+              if (r.ok) { ok = true; break; }
+              if (r.status === 429 || r.status === 503) { await new Promise(r => setTimeout(r, 300 + i * 250)); continue; }
+              break;
+            } catch { await new Promise(r => setTimeout(r, 300 + i * 250)); }
+          }
+          if (!ok) {
+            toast({ variant: "destructive", title: "Network Issue", description: "Please wait a moment and try again." });
+          }
+        }
         const xsrf = (() => {
           try {
             const m = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('XSRF-TOKEN='));
             return m ? decodeURIComponent(m.split('=')[1] || '') : '';
           } catch { return ''; }
         })();
-        fetch(`${apiBase}/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(xsrf ? { 'X-CSRF-Token': xsrf } : {}) },
-          body: JSON.stringify({ username: uname, password: password || 'password' })
-        }).then(async (r) => {
-        let data: any = null;
-        try { data = await r.json(); } catch {}
-        if (!r.ok || !data?.token) {
+        let r: Response | undefined;
+        for (let i = 0; i < 5; i++) {
+          try {
+            const rr = await fetch(`${apiBase}/auth/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(xsrf ? { 'X-CSRF-Token': xsrf } : {}) },
+              body: JSON.stringify({ username: uname, password: password || 'password' })
+            });
+            r = rr;
+            if (rr.ok) break;
+            if (rr.status === 429 || rr.status === 503) { await new Promise(r => setTimeout(r, 300 + i * 250)); continue; }
+            break;
+          } catch { await new Promise(r => setTimeout(r, 300 + i * 250)); }
+        }
+        try {
+          const data = await (r as Response).json();
+          if (!(r as Response).ok || !data?.token) {
           const found = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
           if (!found) {
             toast({ variant: "destructive", title: "Login Failed", description: "Invalid credentials." });
@@ -65,20 +88,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           else if (found.role === 'Customer Service') setLocation('/cs');
           else setLocation('/dashboard');
           return;
-        }
-        setToken(data.token);
-        localStorage.setItem('binapex_token', data.token);
-        const role: any = data.role || 'Trader';
-        const fallbackUser: User = { id: data.userId || Math.random().toString(36).slice(2,9), email, name: email.includes('@') ? email.split('@')[0] : email, role, kyc_status: 'Not Started', membership_tier: 'Silver' } as any;
-        setUser(fallbackUser);
-        localStorage.setItem('binapex_user_id', fallbackUser.id);
-        toast({ title: "Welcome back", description: `Logged in as ${fallbackUser.name}` });
-        if (role === 'Admin') setLocation('/admin');
-        else if (role === 'Customer Service') setLocation('/cs');
-        else setLocation('/dashboard');
-        }).catch(() => {
+          }
+          setToken(data.token);
+          localStorage.setItem('binapex_token', data.token);
+          const role: any = data.role || 'Trader';
+          const fallbackUser: User = { id: data.userId || Math.random().toString(36).slice(2,9), email, name: email.includes('@') ? email.split('@')[0] : email, role, kyc_status: 'Not Started', membership_tier: 'Silver' } as any;
+          setUser(fallbackUser);
+          localStorage.setItem('binapex_user_id', fallbackUser.id);
+          toast({ title: "Welcome back", description: `Logged in as ${fallbackUser.name}` });
+          if (role === 'Admin') setLocation('/admin');
+          else if (role === 'Customer Service') setLocation('/cs');
+          else setLocation('/dashboard');
+        } catch {
           toast({ variant: "destructive", title: "Network Error", description: "Unable to login." });
-        });
+        }
       })();
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Login failed." });
