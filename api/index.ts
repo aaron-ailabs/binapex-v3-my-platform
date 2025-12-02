@@ -19,7 +19,8 @@ export default async function handler(req: any, res: any) {
   try {
     const app = await getApp()
     ;(app as any)(req, res)
-  } catch {
+  } catch (err) {
+    try { console.error('api/index error', err); } catch {}
     res.status(500).json({ message: 'Internal server error' })
   }
 }
