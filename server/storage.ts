@@ -213,7 +213,8 @@ export class PgStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<SecureUser> {
     if (!db) throw new Error('No database')
     const hashed = hashPassword(insertUser.password)
-    const [row] = await db.insert(users).values({ username: insertUser.username, password: hashed }).returning()
+    const id = randomUUID()
+    const [row] = await db.insert(users).values({ id, username: insertUser.username, password: hashed }).returning()
     return { ...row }
   }
   async listUsers(search?: string, limit: number = 500): Promise<SecureUser[]> {
@@ -280,7 +281,8 @@ export class PgStorage implements IStorage {
 
   async addNotification(notification: DbNotificationInsert): Promise<Notification> {
     if (!db) throw new Error('No database');
-    const [row] = await db.insert(notifications).values(notification).returning();
+    const id = randomUUID()
+    const [row] = await db.insert(notifications).values({ ...notification, id }).returning();
     return row;
   }
 

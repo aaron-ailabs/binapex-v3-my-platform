@@ -1,4 +1,5 @@
 import { Readable } from 'stream';
+import { neon as neonClient } from '@neondatabase/serverless'
 import { type Express, type Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storageDb as storage } from "./storage";
@@ -7,7 +8,7 @@ import { validatePasswordStrength, verifyPassword, generateSecureToken, hashPass
 import { z } from 'zod';
 import { registry, tradeExecutionDuration, loginAttempts } from './metrics';
 import { db, sb, hasSupabase } from './db';
-import { wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits, chatSessions as tblChatSessions, chatMessages as tblChatMessages } from '@shared/schema';
+import { users as tblUsers, wallets as tblWallets, trades as tblTrades, transactions as tblTransactions, payoutOverrides as tblPayoutOverrides, payoutAudits as tblPayoutAudits, chatSessions as tblChatSessions, chatMessages as tblChatMessages } from '@shared/schema';
 import { nanoid } from 'nanoid'
 import * as speakeasy from "speakeasy";
 import { eq, and, gte, sql as dsql } from 'drizzle-orm';
@@ -996,7 +997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (db) {
       const existing = await db.select().from(tblWallets).where(eq(tblWallets.userId, userId)).limit(1);
       if (existing[0]) return existing[0] as any;
-      const [created] = await db.insert(tblWallets).values({ userId, assetName: 'USD', balanceUsdCents: 0 }).returning();
+      const [created] = await db.insert(tblWallets).values({ id: Math.random().toString(36).slice(2,9), userId, assetName: 'USD', balanceUsdCents: 0 }).returning();
       return created as any;
     }
     return w as any;
@@ -1438,6 +1439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
        } catch {}
     } else if (db) {
        await db.insert(tblTransactions).values({
+         id: Math.random().toString(36).slice(2,9),
          userId,
          type: 'withdrawal',
          asset: 'USD',
@@ -1569,6 +1571,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ clients: clients.size, tracked: tracked.size, subscribers: subs });
   });
 
+  app.get('/api/_debug/db', async (_req: Request, res: Response) => {
+    const status: Record<string,string> = {}
+    try { if (db) { await (db as any).select().from(tblUsers).limit(1); status.users = 'ok' } else status.users = 'no-db' } catch (e:any) { status.users = String(e?.message || e) }
+    try { if (db) { await (db as any).select().from(tblWallets).limit(1); status.wallets = 'ok' } else status.wallets = 'no-db' } catch (e:any) { status.wallets = String(e?.message || e) }
+    try { if (db) { await (db as any).select().from(tblTrades).limit(1); status.trades = 'ok' } else status.trades = 'no-db' } catch (e:any) { status.trades = String(e?.message || e) }
+    try { if (db) { await (db as any).select().from(tblTransactions).limit(1); status.transactions = 'ok' } else status.transactions = 'no-db' } catch (e:any) { status.transactions = String(e?.message || e) }
+    try {
+      const u = process.env.DATABASE_URL || ''
+      if (u) {
+        const c = neonClient(u)
+        const rows = await c`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users','wallets','trades','transactions')`
+        status.tables = JSON.stringify(rows)
+        const cols = await c`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='users' ORDER BY column_name`
+        status.user_columns = JSON.stringify(cols)
+      }
+    } catch (e:any) {
+      status.tables = String(e?.message || e)
+    }
+    res.json(status)
+  })
+
   // Credit Score Management & Sync
   const creditScores = new Map<string, { score: number; lastUpdated: number }>();
   const creditScoreConfig = { decimals: 0, rounding: 'nearest' as 'nearest' | 'down' | 'up' };
@@ -1697,6 +1720,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (db) {
       try {
         await db.insert(tblTransactions).values({
+          id: Math.random().toString(36).slice(2,9),
           userId: targetUser.id,
           type: 'admin_allocation',
           asset: 'USD',

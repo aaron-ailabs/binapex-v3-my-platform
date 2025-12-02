@@ -135,7 +135,13 @@ const isVercel = !!process.env.VERCEL;
     }
   }
 
-  const httpErrors = new Counter({ name: 'http_errors_total', help: 'HTTP errors', labelNames: ['route','severity','status'] });
+  let httpErrors: Counter
+  try {
+    httpErrors = (registry.getSingleMetric('http_errors_total') as any)
+    if (!httpErrors) httpErrors = new Counter({ name: 'http_errors_total', help: 'HTTP errors', labelNames: ['route','severity','status'], registers: [registry] })
+  } catch {
+    try { httpErrors = new Counter({ name: 'http_errors_total', help: 'HTTP errors', labelNames: ['route','severity','status'], registers: [registry] }) } catch {}
+  }
   app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
