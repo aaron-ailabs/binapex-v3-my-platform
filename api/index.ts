@@ -6,7 +6,14 @@ if (!process.env.ENCRYPTION_SALT) process.env.ENCRYPTION_SALT = randomBytes(16).
 
 let appPromise: Promise<any> | null = null
 function getApp() {
-  if (!appPromise) appPromise = import('../server/index').then((m) => (m as any).default || (m as any))
+  if (!appPromise) {
+    appPromise = import('../server/index.js')
+      .then((m) => (m as any).default || (m as any))
+      .catch(async () => {
+        const m = await import('../server/index')
+        return (m as any).default || (m as any)
+      })
+  }
   return appPromise
 }
 
