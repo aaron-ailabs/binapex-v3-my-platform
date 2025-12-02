@@ -1,10 +1,11 @@
-import { db, Transaction, DepositSettings, EngineSettings } from '@/lib/mock-data';
+import { db, Transaction, EngineSettings } from '@/lib/mock-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toUSD, fmtUSD } from '@/lib/utils';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Check, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Input } from '@/components/ui/input';
@@ -13,56 +14,17 @@ import { Label } from '@/components/ui/label';
 export default function TransactionOversight() {
   const { toast } = useToast();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [settings, setSettings] = useState<DepositSettings | null>(null);
   const [engine, setEngine] = useState<EngineSettings | null>(null);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
-  const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setTransactions(db.getTransactions().filter(t => t.status === 'Pending'));
-    setSettings(db.getDepositSettings());
     setEngine(db.getEngineSettings());
-    if (typeof window !== 'undefined' && window.location.search.includes('tab=funding')) {
-      setTimeout(() => settingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-    }
+    const t = setTimeout(() => setLoading(false), 200);
+    return () => clearTimeout(t);
   }, []);
 
-  const handleQrUpload = async (file?: File) => {
-    try {
-      if (!file || !settings) return;
-      const allowed = ['image/png', 'image/jpeg'];
-      if (!allowed.includes(file.type)) {
-        toast({ variant: 'destructive', title: 'Invalid file type', description: 'Only PNG or JPEG allowed.' });
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        toast({ variant: 'destructive', title: 'File too large', description: 'Max 5MB.' });
-        return;
-      }
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const base64 = btoa(binary);
-      const res = await fetch(`${apiBase}/chat/upload`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, mimeType: file.type, contentBase64: base64 })
-      });
-      if (!res.ok) {
-        toast({ variant: 'destructive', title: 'Upload failed', description: 'Please try again.' });
-        return;
-      }
-      const data = await res.json();
-      const url = data.url as string;
-      const next = { ...settings, qr_code_url: url } as DepositSettings;
-      setSettings(next);
-      db.updateDepositSettings(next);
-      toast({ title: 'QR Code Updated', description: 'QR image uploaded successfully.' });
-    } catch {
-      toast({ variant: 'destructive', title: 'Upload error', description: 'Please try again.' });
-    }
-  };
+  
 
   const handleAction = (id: string, status: 'Approved' | 'Rejected') => {
     const tx = transactions.find(t => t.id === id);
@@ -94,84 +56,50 @@ export default function TransactionOversight() {
     toast({ title: `Transaction ${status}`, description: `Transaction has been processed.` });
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-8 w-72" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <Skeleton className="h-64" />
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Transaction Oversight</h1>
-        <p className="text-muted-foreground">Approve or reject pending transactions.</p>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold">Transaction Oversight</h1>
+        <p className="text-sm text-muted-foreground">Lulus/tolak transaksi yang belum diproses.</p>
       </div>
 
-      <Card ref={settingsRef as any} id="funding">
+      <Card>
         <CardHeader>
-          <CardTitle>Deposit Settings (Malaysia)</CardTitle>
+          <CardTitle>Engine Settings</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {settings && (
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Bank Name</Label>
-                <Input value={settings.bank.bank_name} onChange={(e) => setSettings({ ...settings, bank: { ...settings.bank, bank_name: e.target.value } })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Account Name</Label>
-                <Input value={settings.bank.account_name} onChange={(e) => setSettings({ ...settings, bank: { ...settings.bank, account_name: e.target.value } })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Account Number</Label>
-                <Input value={settings.bank.account_number} onChange={(e) => setSettings({ ...settings, bank: { ...settings.bank, account_number: e.target.value } })} />
-              </div>
-              <div className="space-y-2">
-                <Label>eWallet Provider</Label>
-                <Input value={settings.ewallet.provider} onChange={(e) => setSettings({ ...settings, ewallet: { ...settings.ewallet, provider: e.target.value } })} />
-              </div>
-              <div className="space-y-2">
-                <Label>eWallet Account ID</Label>
-                <Input value={settings.ewallet.account_id} onChange={(e) => setSettings({ ...settings, ewallet: { ...settings.ewallet, account_id: e.target.value } })} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>QR Code</Label>
-                <div className="flex items-center gap-3">
-                  <Input type="file" accept="image/png,image/jpeg" onChange={(e) => handleQrUpload(e.target.files?.[0])} className="max-w-[260px]" />
-                  {settings.qr_code_url ? (
-                    <img src={settings.qr_code_url} alt="QR" className="h-16 w-16 rounded border border-white/10 object-cover" />
-                  ) : null}
-                </div>
-                {settings.qr_code_url ? (
-                  <a href={settings.qr_code_url} target="_blank" className="text-xs underline text-muted-foreground">Open current QR</a>
-                ) : (
-                  <div className="text-xs text-muted-foreground">No QR uploaded yet</div>
-                )}
-              </div>
-            </div>
-          )}
           <div className="grid md:grid-cols-2 gap-4 mt-4">
             <div className="space-y-2">
               <Label>Spread (bps)</Label>
-              <Input type="number" value={engine?.spreadBps ?? 0} onChange={(e) => setEngine(prev => ({ spreadBps: Number(e.target.value || 0) }))} />
+              <Input type="number" value={engine?.spreadBps ?? 0} onChange={(e) => setEngine(_prev => ({ spreadBps: Number(e.target.value || 0) }))} />
             </div>
           </div>
           <div className="flex justify-end mt-4 gap-2">
             <Button variant="outline" onClick={() => { if (engine) { db.updateEngineSettings(engine); toast({ title: 'Engine Updated', description: 'Spread configuration saved.' }); } }}>Save Engine</Button>
-            <Button onClick={() => { 
-              if (settings) { 
-                const acct = settings.bank.account_number.replace(/\D/g, '');
-                if (acct.length < 10 || acct.length > 16) { 
-                  toast({ variant: 'destructive', title: 'Invalid Account Number', description: 'Provide a valid Malaysian bank account number.' });
-                  return; 
-                }
-                db.updateDepositSettings({ 
-                  ...settings, 
-                  bank: { ...settings.bank, account_number: acct }
-                }); 
-                toast({ title: 'Settings Saved', description: 'Deposit channels updated.' }); 
-              } 
-            }}>Save Settings</Button>
+          </div>
+          <div className="border-t pt-4">
+            <p className="text-sm text-muted-foreground">Manage deposit channels on the dedicated funding page.</p>
+            <a href="/admin/funding" className="inline-flex items-center h-9 px-3 rounded-md bg-primary text-primary-foreground mt-2">Go to Funding Settings</a>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -214,6 +142,7 @@ export default function TransactionOversight() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

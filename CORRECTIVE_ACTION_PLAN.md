@@ -601,7 +601,7 @@ export const metricsMiddleware = (req: Request, res: Response, next: NextFunctio
 ## ✅ VERIFICATION CHECKLIST
 
 ### Before Each Deployment Phase:
-- [ ] All tests pass (unit + integration)
+- [x] All tests pass (unit + integration)
 - [ ] Security scan shows no critical issues
 - [ ] Performance benchmarks meet requirements
 - [ ] Database migrations tested
@@ -609,6 +609,8 @@ export const metricsMiddleware = (req: Request, res: Response, next: NextFunctio
 - [ ] Rollback procedures tested
 - [ ] Monitoring dashboards configured
 - [ ] Documentation updated
+  - Trading route atomic deduction fix implemented and tested
+  - Tests added: trading_logic.spec.ts validating stake deduction, overrides, tier caps
 
 ### Production Readiness Criteria:
 - [ ] Zero critical security vulnerabilities

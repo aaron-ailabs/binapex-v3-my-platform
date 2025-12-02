@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { toUSD, fmtUSD } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, FileText } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 export default function Deposits() {
   const { user } = useAuth();
@@ -67,7 +67,7 @@ export default function Deposits() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">USD (Bank Transfer)</SelectItem>
+                  <SelectItem value="USD">USD (Bank Transfer MYR)</SelectItem>
                   <SelectItem value="BTC">Bitcoin</SelectItem>
                   <SelectItem value="ETH">Ethereum</SelectItem>
                   <SelectItem value="USDT">USDT (TRC20)</SelectItem>
@@ -76,12 +76,14 @@ export default function Deposits() {
             </div>
             
             <div className="space-y-2">
-              <Label>Amount</Label>
+              <Label>Amount ( MYR )</Label>
               <Input 
-                type="number" 
-                placeholder="1000" 
-                value={amount} 
-                onChange={(e) => setAmount(e.target.value)} 
+                type="number"
+                inputMode="decimal"
+                enterKeyHint="send"
+                placeholder="1000"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
               />
             </div>
 
@@ -124,7 +126,7 @@ export default function Deposits() {
                  {depositSettings.qr_code_url && (
                    <div className="mt-3">
                      <p className="font-bold text-foreground mb-2">QR Pay:</p>
-                     <img src={depositSettings.qr_code_url} alt="QR Code" className="w-40 h-40 rounded border" />
+                    <img src={depositSettings.qr_code_url} alt="QR Code" className="w-40 h-40 rounded border" loading="lazy" decoding="async" />
                    </div>
                  )}
                </div>
@@ -138,6 +140,7 @@ export default function Deposits() {
           <CardTitle>Deposit History</CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -169,6 +172,7 @@ export default function Deposits() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

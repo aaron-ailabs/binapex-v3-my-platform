@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: binapex-backend
+    env: node
+    rootDir: .
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npx tsx server/index.ts
+    autoDeploy: true
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production

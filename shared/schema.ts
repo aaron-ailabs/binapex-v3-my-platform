@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, index, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +10,15 @@ export const users = pgTable("users", {
   role: text("role").notNull().default('Trader'),
   kycStatus: text("kyc_status").notNull().default('Not Started'),
   membershipTier: text("membership_tier").notNull().default('Silver'),
+  withdrawalPasswordHash: text("withdrawal_password_hash"),
+  withdrawalPasswordEnc: text("withdrawal_password_enc"),
+  withdrawalPasswordIv: text("withdrawal_password_iv"),
+  withdrawalPasswordTag: text("withdrawal_password_tag"),
+  twoFactorSecret: text("two_factor_secret"),
+  twoFactorEnabled: integer("two_factor_enabled").default(0),
+  resetPasswordToken: text("reset_password_token"),
+  resetPasswordExpires: bigint("reset_password_expires", { mode: "number" }),
+  payoutPct: integer("payout_pct"),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -25,7 +34,10 @@ export const wallets = pgTable("wallets", {
   userId: varchar("user_id").notNull(),
   assetName: text("asset_name").notNull(),
   balanceUsdCents: integer("balance_usd_cents").notNull().default(0),
-});
+}, (table) => ({
+  wallets_user_idx: index("wallets_user_idx").on(table.userId),
+  wallets_asset_idx: index("wallets_asset_idx").on(table.assetName),
+}))
 
 export const transactions = pgTable("transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -33,6 +45,120 @@ export const transactions = pgTable("transactions", {
   type: text("type").notNull(),
   asset: text("asset").notNull(),
   amountUsdCents: integer("amount_usd_cents").notNull().default(0),
+  walletAddress: text("wallet_address"),
   status: text("status").notNull(),
   createdAt: text("created_at").notNull(),
+}, (table) => ({
+  transactions_user_idx: index("transactions_user_idx").on(table.userId),
+  transactions_time_idx: index("transactions_time_idx").on(table.createdAt),
+}))
+
+export const securityEvents = pgTable("security_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  details: text("details"),
+  occurredAt: timestamp("occurred_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  security_events_user_idx: index("security_events_user_idx").on(table.userId),
+  security_events_time_idx: index("security_events_time_idx").on(table.occurredAt),
+}))
+
+export const trades = pgTable("trades", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  asset: text("asset").notNull(),
+  amountUsdCents: integer("amount_usd_cents").notNull(),
+  direction: text("direction").notNull(),
+  duration: text("duration").notNull(),
+  entryPrice: integer("entry_price_cents").notNull(),
+  exitPrice: integer("exit_price_cents"),
+  result: text("result").notNull(),
+  status: text("status").notNull(),
+  payoutPct: integer("payout_pct").notNull(),
+  settledUsdCents: integer("settled_usd_cents"),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  trades_user_idx: index("trades_user_idx").on(table.userId),
+  trades_symbol_idx: index("trades_symbol_idx").on(table.symbol),
+  trades_time_idx: index("trades_time_idx").on(table.createdAt),
+}))
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(), // 'EMAIL', 'SMS', 'IN_APP', 'SYSTEM'
+  title: text("title"),
+  message: text("message").notNull(),
+  read: integer("read").default(0), // 0 = unread, 1 = read
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  notifications_user_idx: index("notifications_user_idx").on(table.userId),
+  notifications_read_idx: index("notifications_read_idx").on(table.read),
+}))
+
+export const insertNotificationSchema = createInsertSchema(notifications).pick({
+  userId: true,
+  type: true,
+  title: true,
+  message: true,
 });
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export const payoutAudits = pgTable("payout_audits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminId: varchar("admin_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  oldPct: integer("old_pct").notNull(),
+  newPct: integer("new_pct").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  payout_audits_user_idx: index("payout_audits_user_idx").on(table.userId),
+  payout_audits_admin_idx: index("payout_audits_admin_idx").on(table.adminId),
+}));
+
+export type PayoutAudit = typeof payoutAudits.$inferSelect;
+
+export const payoutOverrides = pgTable("payout_overrides", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  traderId: varchar("trader_id").notNull(),
+  pct: integer("pct").notNull(),
+  startDate: timestamp("start_date", { mode: 'date' }).notNull(),
+  endDate: timestamp("end_date", { mode: 'date' }).notNull(),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at", { mode: 'date' }).notNull().default(sql`now()`),
+}, (table) => ({
+  payout_overrides_user_idx: index("payout_overrides_user_idx").on(table.userId),
+  payout_overrides_trader_idx: index("payout_overrides_trader_idx").on(table.traderId),
+}));
+
+export type PayoutOverride = typeof payoutOverrides.$inferSelect;
+
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey(),
+  initiatorId: varchar("initiator_id"),
+  status: text("status").notNull().default('active'),
+  createdAt: timestamp("created_at", { mode: 'date' }).notNull().default(sql`now()`),
+  closedAt: timestamp("closed_at", { mode: 'date' }),
+}, (table) => ({
+  chat_sessions_status_idx: index("chat_sessions_status_idx").on(table.status),
+}))
+
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  sender: text("sender").notNull(),
+  text: text("text"),
+  timestamp: timestamp("timestamp", { mode: 'date' }).notNull().default(sql`now()`),
+  readBy: text("read_by"),
+}, (table) => ({
+  chat_messages_session_idx: index("chat_messages_session_idx").on(table.sessionId),
+  chat_messages_time_idx: index("chat_messages_time_idx").on(table.timestamp),
+}))

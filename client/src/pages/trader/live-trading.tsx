@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowUp, ArrowDown, TrendingUp, Activity } from 'lucide-react';
 import { useRef } from 'react';
@@ -16,39 +16,35 @@ export default function LiveTrading() {
   const { toast } = useToast();
   const [amount, setAmount] = useState('');
   const [duration, setDuration] = useState('1M');
+  const [alertPrice, setAlertPrice] = useState('');
+  const [alertDirection, setAlertDirection] = useState('above');
 
-  const forexAssets = [ 
-    { name: 'USD/SGD', symbol: 'FX:USDSGD' }, 
-    { name: 'USD/PHP', symbol: 'FX:USDPHP' }, 
-    { name: 'USD/NZD', symbol: 'FX:USDNZD' }, 
-    { name: 'EUR/USD', symbol: 'FX:EURUSD' }, 
-    { name: 'USD/MYR', symbol: 'FX:USDMYR' }, 
-    { name: 'AUD/USD', symbol: 'FX:AUDUSD' }, 
-    { name: 'GBP/USD', symbol: 'FX:GBPUSD' }, 
-    { name: 'USD/JPY', symbol: 'FX:USDJPY' }, 
-    { name: 'USD/THB', symbol: 'FX:USDTHB' }, 
-    { name: 'USD/IDR', symbol: 'FX:USDIDR' }, 
-    { name: 'USD/HKD', symbol: 'FX:USDHKD' }, 
-    { name: 'USD/KRW', symbol: 'FX:USDKRW' }, 
-  ];
+  const forexAssets = useMemo(() => ([
+    { name: 'EUR/USD', symbol: 'BLACKBULL:EURUSD' },
+    { name: 'GBP/USD', symbol: 'BLACKBULL:GBPUSD' },
+    { name: 'USD/JPY', symbol: 'BLACKBULL:USDJPY' },
+    { name: 'GBP/JPY', symbol: 'BLACKBULL:GBPJPY' },
+    { name: 'AUD/USD', symbol: 'BLACKBULL:AUDUSD' },
+    { name: 'USD/CHF', symbol: 'BLACKBULL:USDCHF' },
+    { name: 'NZD/USD', symbol: 'BLACKBULL:NZDUSD' },
+    { name: 'USD/SGD', symbol: 'BLACKBULL:USDSGD' },
+    { name: 'MYR/USD', symbol: 'FX_IDC:MYRUSD' },
+    { name: 'MYR/THB', symbol: 'FX_IDC:MYRTHB' },
+  ]), []);
  
-  const stockAssets = [ 
-    { name: 'KOPI', symbol: 'MYX:KOPI' }, 
-    { name: 'PJBUMI', symbol: 'MYX:PJBUMI' }, 
-    { name: 'MITRA', symbol: 'MYX:MITRA' }, 
-    { name: 'LSH', symbol: 'MYX:LSH' }, 
-    { name: 'CVIEW', symbol: 'MYX:CVIEW' }, 
-    { name: 'GDB Holdings', symbol: 'MYX:GDB' }, 
-    { name: 'NADIBHD', symbol: 'MYX:NADIBHD' }, 
-    { name: 'RAMSSOL', symbol: 'MYX:RAMSSOL' }, 
-    { name: 'HARNLEN', symbol: 'MYX:HARNLEN' }, 
-    { name: 'BNASTRA', symbol: 'MYX:BNASTRA' }, 
-    { name: 'EDGENTA', symbol: 'MYX:EDGENTA' }, 
-    { name: 'KERJAYA', symbol: 'MYX:KERJAYA' }, 
-    { name: 'ECOSHOP', symbol: 'MYX:ECOSHOP' }, 
-  ];
+  const stockAssets = useMemo(() => ([
+    { name: 'NVIDIA', symbol: 'NASDAQ:NVDA' },
+    { name: 'Tesla', symbol: 'NASDAQ:TSLA' },
+    { name: 'Apple', symbol: 'NASDAQ:AAPL' },
+    { name: 'Meta', symbol: 'NASDAQ:META' },
+    { name: 'Amazon', symbol: 'NASDAQ:AMZN' },
+    { name: 'Palantir', symbol: 'NASDAQ:PLTR' },
+    { name: 'Microsoft', symbol: 'NASDAQ:MSFT' },
+    { name: 'Netflix', symbol: 'NASDAQ:NFLX' },
+    { name: 'Alibaba', symbol: 'NYSE:BABA' },
+  ]), []);
  
-  const commodityAssets = [ 
+  const commodityAssets = useMemo(() => ([ 
     { name: 'Gold', symbol: 'COMEX:GC1!' }, 
     { name: 'Palladium', symbol: 'NYMEX:PA1!' }, 
     { name: 'Platinum', symbol: 'NYMEX:PL1!' }, 
@@ -61,31 +57,25 @@ export default function LiveTrading() {
     { name: 'Coffee', symbol: 'ICEUS:KC1!' }, 
     { name: 'Aluminum', symbol: 'LME:ALI1!' }, 
     { name: 'Copper', symbol: 'COMEX:HG1!' }, 
-  ];
+  ]), []);
  
-  const cryptoAssets = [ 
-    { name: 'Tether', symbol: 'BINANCE:USDTUSD' }, 
-    { name: 'UniSwap', symbol: 'BINANCE:UNIUSD' }, 
-    { name: 'Bitcoin', symbol: 'BINANCE:BTCUSDT' }, 
-    { name: 'Solana', symbol: 'BINANCE:SOLUSDT' }, 
-    { name: 'Cardano', symbol: 'BINANCE:ADAUSDT' }, 
-    { name: 'Litecoin', symbol: 'BINANCE:LTCUSDT' }, 
-    { name: 'Dogecoin', symbol: 'BINANCE:DOGEUSDT' }, 
-    { name: 'Polygon', symbol: 'BINANCE:MATICUSDT' }, 
-    { name: 'Ethereum', symbol: 'BINANCE:ETHUSDT' }, 
-    { name: 'Chainlink', symbol: 'BINANCE:LINKUSDT' }, 
-    { name: 'Ethereum Classic', symbol: 'BINANCE:ETCUSDT' }, 
-    { name: 'Bitcoin Cash', symbol: 'BINANCE:BCHUSDT' }, 
-  ];
+  const cryptoAssets = useMemo(() => ([
+    { name: 'Bitcoin', symbol: 'BINANCE:BTCUSDT' },
+    { name: 'Ethereum', symbol: 'BINANCE:ETHUSDT' },
+    { name: 'Solana', symbol: 'BINANCE:SOLUSDT' },
+    { name: 'XRP', symbol: 'BINANCE:XRPUSDT' },
+    { name: 'BNB', symbol: 'BINANCE:BNBUSDT' },
+    { name: 'Dogecoin', symbol: 'BINANCE:DOGEUSDT' },
+    { name: 'Zcash', symbol: 'BINANCE:ZECUSDT' },
+    { name: 'Litecoin', symbol: 'BINANCE:LTCUSDT' },
+    { name: 'TRON', symbol: 'BINANCE:TRXUSDT' },
+  ]), []);
 
   const [category, setCategory] = useState<'Forex' | 'Stocks' | 'Commodities' | 'Crypto'>('Crypto');
   const [assetName, setAssetName] = useState('Bitcoin');
   const [assetSymbol, setAssetSymbol] = useState('BINANCE:BTCUSDT');
   const [spreadBps, setSpreadBps] = useState<number>(db.getEngineSettings().spreadBps);
-<<<<<<< HEAD
   const [payoutPct, setPayoutPct] = useState<number>(85);
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   const [price, setPrice] = useState<number | null>(null);
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   const esRef = useRef<EventSource | null>(null);
@@ -98,45 +88,55 @@ export default function LiveTrading() {
       setAssetName(list[0].name);
       setAssetSymbol(list[0].symbol);
     }
-  }, [category]);
+  }, [category, assetName, forexAssets, stockAssets, commodityAssets, cryptoAssets]);
 
   useEffect(() => {
-<<<<<<< HEAD
     (async () => {
       try {
-        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-        const res = await fetch(`${apiBase}/engine`, { headers });
+        if (!token) return;
+        const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+        const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+        const res = await fetch(`${base}/engine`, { headers });
         if (res.ok) {
           const d = await res.json();
           if (typeof d.spreadBps === 'number') setSpreadBps(d.spreadBps);
-          if (typeof d.payoutPct === 'number') setPayoutPct(Math.max(0, Math.min(100, d.payoutPct)));
+        }
+        const pr = await fetch(`${base}/profile`, { headers });
+        if (pr.ok) {
+          const j = await pr.json();
+          if (typeof j.payoutPct === 'number') setPayoutPct(Math.max(0, Math.min(100, j.payoutPct)));
+          try {
+            const or = await fetch(`${base}/payout-overrides`, { headers });
+            if (or.ok) {
+              const list = await or.json();
+              const selfId = String(user?.id || j.id);
+              const now = Date.now();
+              const match = Array.isArray(list) ? list.find((o: any) => String(o.traderId) === selfId && now >= Date.parse(String(o.startDate)) && now <= Date.parse(String(o.endDate))) : null;
+              if (match && typeof match.pct === 'number') setPayoutPct(Math.max(0, Math.min(100, Number(match.pct))));
+            }
+          } catch {}
         }
       } catch {}
     })();
-  }, [apiBase, token]);
-=======
-    setSpreadBps(db.getEngineSettings().spreadBps);
-  }, []);
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
+  }, [apiBase, token, user?.id]);
 
   useEffect(() => {
     setPrice(null);
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
     if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
-<<<<<<< HEAD
     (async () => {
       try {
-        const res = await fetch(`${apiBase}/prices/alpha?symbol=${encodeURIComponent(assetSymbol)}`);
+        const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+        const res = await fetch(`${base}/prices/alpha?symbol=${encodeURIComponent(assetSymbol)}`);
         if (res.ok) {
           const d = await res.json();
           if (typeof d.price === 'number') setPrice(d.price);
         }
       } catch {}
     })();
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     const connect = () => {
-      const url = `${apiBase}/prices/stream?symbols=${encodeURIComponent(assetSymbol)}`;
+      const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+      const url = `${base}/prices/stream?symbols=${encodeURIComponent(assetSymbol)}`;
       const es = new EventSource(url);
       esRef.current = es;
       es.onopen = () => { retryRef.current = 1000; };
@@ -150,13 +150,37 @@ export default function LiveTrading() {
       };
       es.onerror = () => {
         try { es.close(); } catch {}
+        if (document.visibilityState !== 'visible') { timerRef.current = null; return; }
         const next = Math.min(retryRef.current * 2, 15000);
         retryRef.current = next;
         timerRef.current = setTimeout(connect, next);
       };
     };
     connect();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        if (!esRef.current && !timerRef.current) {
+          retryRef.current = 1000;
+          connect();
+        }
+      } else {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
+      }
+    };
+    const onOnline = () => {
+      if (document.visibilityState === 'visible') {
+        if (!esRef.current && !timerRef.current) {
+          retryRef.current = 1000;
+          connect();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('online', onOnline);
     return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('online', onOnline);
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
       if (esRef.current) { try { esRef.current.close(); } catch {} esRef.current = null; }
     };
@@ -168,33 +192,31 @@ export default function LiveTrading() {
       return;
     }
     
-<<<<<<< HEAD
     if (!user) {
       toast({ variant: 'destructive', title: 'Login Required', description: 'Please sign in to place trades.' });
       return;
     }
-=======
-    if (!user) return;
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
+    if (!token) {
+      toast({ variant: 'destructive', title: 'Authorization Required', description: 'Session token missing. Please log out and log back in.' });
+      return;
+    }
     try {
       const fallback = Math.abs(assetSymbol.split('').reduce((s,c)=>s + c.charCodeAt(0),0)) % 1000 + 100;
       const body = { symbol: assetSymbol, asset: assetName, amount: Number(amount), direction, duration, entryPrice: price ?? fallback };
-      const res = await fetch(`${apiBase}/trades`, {
+      const base = (import.meta.env.VITE_API_BASE as string) || '/api';
+      const res = await fetch(`${base}/trades`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body)
       });
       if (!res.ok) {
-<<<<<<< HEAD
         let msg = 'Could not place trade.';
         try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
         toast({ variant: 'destructive', title: 'Trade Failed', description: msg });
-=======
-        toast({ variant: 'destructive', title: 'Trade Failed', description: 'Could not place trade.' });
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
         return;
       }
       toast({ title: 'Trade Placed', description: `${direction} trade for $${amount} on ${assetName} opened.` });
+      try { if (navigator.vibrate) navigator.vibrate(30); } catch {}
       setAmount('');
     } catch {
       toast({ variant: 'destructive', title: 'Network Error', description: 'Please try again.' });
@@ -242,15 +264,71 @@ export default function LiveTrading() {
                  </SelectContent>
                </Select>
              </div>
-           </div>
+          </div>
         </div>
         
         <Card className="h-[600px] border-primary/20 bg-card/50 backdrop-blur-sm">
           <CardContent className="p-0 h-full">
-            <TradingViewWidget 
-                symbol={assetSymbol} 
-                height="100%" 
-            />
+            {category === 'Crypto' ? (
+              <TradingViewWidget
+                overviewSymbols={[
+                  'BINANCE:BTCUSDT|ALL',
+                  'BINANCE:ETHUSDT|ALL',
+                  'BINANCE:SOLUSDT|ALL',
+                  'BINANCE:XRPUSDT|ALL',
+                  'BINANCE:BNBUSDT|ALL',
+                  'BINANCE:DOGEUSDT|ALL',
+                  'BINANCE:ZECUSDT|ALL',
+                  'BINANCE:LTCUSDT|ALL',
+                  'BINANCE:TRXUSDT|ALL',
+                ]}
+                height="100%"
+              />
+            ) : category === 'Forex' ? (
+              <TradingViewWidget
+                overviewSymbols={[
+                  'BLACKBULL:EURUSD|ALL',
+                  'BLACKBULL:GBPUSD|ALL',
+                  'BLACKBULL:USDJPY|ALL',
+                  'BLACKBULL:GBPJPY|ALL',
+                  'BLACKBULL:AUDUSD|ALL',
+                  'BLACKBULL:USDCHF|ALL',
+                  'BLACKBULL:NZDUSD|ALL',
+                  'BLACKBULL:USDSGD|ALL',
+                  'FX_IDC:MYRUSD|ALL',
+                  'FX_IDC:MYRTHB|ALL',
+                ]}
+                height="100%"
+              />
+            ) : category === 'Stocks' ? (
+              <TradingViewWidget
+                overviewSymbols={[
+                  'NASDAQ:NVDA|ALL',
+                  'NASDAQ:TSLA|ALL',
+                  'NASDAQ:AAPL|ALL',
+                  'NASDAQ:META|ALL',
+                  'NASDAQ:AMZN|ALL',
+                  'NASDAQ:PLTR|ALL',
+                  'NASDAQ:MSFT|ALL',
+                  'NASDAQ:NFLX|ALL',
+                  'NYSE:BABA|ALL',
+                ]}
+                height="100%"
+              />
+            ) : (
+              <TradingViewWidget
+                advancedSymbol={assetSymbol}
+                advancedOptions={{
+                  interval: '1D',
+                  hide_side_toolbar: false,
+                  hide_top_toolbar: false,
+                  withdateranges: true,
+                  studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies','BB@tv-basicstudies'],
+                }}
+                watchlist={commodityAssets.map(c => c.symbol)}
+                height="100%"
+              />
+            )}
           </CardContent>
         </Card>
       </div>
@@ -287,6 +365,42 @@ export default function LiveTrading() {
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">24h Low</span>
               <span className="font-mono">$47,500.00</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input placeholder="Alert price" value={alertPrice} onChange={(e) => setAlertPrice(e.target.value)} className="w-28" />
+              <Select value={alertDirection} onValueChange={setAlertDirection}>
+                <SelectTrigger className="w-28">
+                  <SelectValue placeholder="Direction" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="above">Above</SelectItem>
+                  <SelectItem value="below">Below</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" variant="outline" onClick={async () => {
+                const t = Number(alertPrice);
+                if (!Number.isFinite(t) || t <= 0) {
+                  toast({ variant: 'destructive', title: 'Invalid price', description: 'Enter a valid price target.' });
+                  return;
+                }
+                try {
+                  const res = await fetch(`${apiBase}/alerts/price`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                    body: JSON.stringify({ symbol: assetSymbol, target: t, direction: alertDirection })
+                  });
+                  if (res.ok) {
+                    toast({ title: 'Alert Added', description: `Alert when ${assetName} ${alertDirection} ${t}` });
+                    setAlertPrice('');
+                  } else {
+                    let msg = 'Failed to add alert.';
+                    try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
+                    toast({ variant: 'destructive', title: 'Error', description: msg });
+                  }
+                } catch {
+                  toast({ variant: 'destructive', title: 'Error', description: 'Failed to add alert.' });
+                }
+              }}>Add Alert</Button>
             </div>
           </CardContent>
         </Card>
