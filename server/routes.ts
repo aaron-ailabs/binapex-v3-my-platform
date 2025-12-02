@@ -186,7 +186,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const token = generateSecureToken(24);
     csrfTokens.set(ip, token);
-    try { res.cookie('XSRF-TOKEN', token, { sameSite: 'strict', secure: true }); } catch {}
+    try {
+      const cookie = `XSRF-TOKEN=${encodeURIComponent(token)}; Path=/; SameSite=Strict; Secure`;
+      res.setHeader('Set-Cookie', cookie);
+    } catch {}
     res.json({ ok: true });
   });
   app.post('/api/admin/jwt/rotate', requireAuth, requireRole(['Admin']), (_req: Request, res: Response) => {
