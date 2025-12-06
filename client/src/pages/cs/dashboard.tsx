@@ -15,6 +15,7 @@ export default function CSDashboard() {
   const [messages, setMessages] = useState<{sender: 'trader'|'agent'|'ai', text?: string, timestamp: number}[]>([]);
   const [chatInput, setChatInput] = useState('');
   const wsRef = useRef<WebSocket | null>(null);
+  const [sessions, setSessions] = useState<{ sessionId: string; clients: number; createdAt: number; lastActivity: number }[]>([]);
 
   useEffect(() => {
     setTickets(db.getTickets().filter(t => t.status === 'Open'));
@@ -28,6 +29,19 @@ export default function CSDashboard() {
       } catch {}
     }
     loadPresence();
+  }, []);
+
+  useEffect(() => {
+    let timer: any = null;
+    const loadSessions = async () => {
+      try {
+        const res = await fetch('/api/support/sessions');
+        if (res.ok) setSessions(await res.json());
+      } catch {}
+    };
+    loadSessions();
+    timer = setInterval(loadSessions, 2000);
+    return () => { if (timer) clearInterval(timer); };
   }, []);
 
   const handleClose = (id: string) => {
@@ -143,6 +157,41 @@ export default function CSDashboard() {
             <Button size="sm" variant="outline" onClick={setAway}>Set Away</Button>
             <Button size="sm" variant="destructive" onClick={setOffline}>Go Offline</Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Active Chat Sessions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Session ID</TableHead>
+                <TableHead>Clients</TableHead>
+                <TableHead>Last Activity</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sessions.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">No active sessions.</TableCell>
+                </TableRow>
+              )}
+              {sessions.map((s) => (
+                <TableRow key={s.sessionId}>
+                  <TableCell className="font-mono text-xs">{s.sessionId}</TableCell>
+                  <TableCell>{s.clients}</TableCell>
+                  <TableCell>{s.lastActivity ? new Date(s.lastActivity).toLocaleTimeString() : '-'}</TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" onClick={() => { setSessionId(s.sessionId); joinSession(); }}>Join</Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 

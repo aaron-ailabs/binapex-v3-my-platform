@@ -9,16 +9,12 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
-<<<<<<< HEAD
 import { Eye, EyeOff, Shield, Lock, AlertCircle, CheckCircle2 } from 'lucide-react';
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
 export default function Security() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<User | null>(null);
-<<<<<<< HEAD
   const apiBase = (import.meta.env.VITE_API_BASE as string) || '/api';
   
   // Withdrawal password state
@@ -36,15 +32,12 @@ export default function Security() {
   const [verificationChannel, setVerificationChannel] = useState<'email' | 'sms'>('email');
   const [verificationCode, setVerificationCode] = useState('');
   const [events, setEvents] = useState<any[]>([]);
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
 
   const handlePasswordUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     toast({ title: 'Password Updated', description: 'Your password has been changed successfully.' });
   };
 
-<<<<<<< HEAD
   // Validate withdrawal password
   const validatePassword = (password: string) => {
     const requirements = {
@@ -111,9 +104,6 @@ export default function Security() {
       toast({ variant: 'destructive', title: 'Error', description: error?.message || 'Failed to set withdrawal password.' });
     }
   };
-
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
   useEffect(() => {
     if (user) {
       setProfile(user);
@@ -125,13 +115,10 @@ export default function Security() {
           db.updateUser(updated);
         })
         .catch(() => {});
-<<<<<<< HEAD
       fetch(`${apiBase}/security/events`, { headers: { Authorization: `Bearer ${localStorage.getItem('binapex_token') || ''}` } })
         .then(r => r.ok ? r.json() : [])
         .then(setEvents)
         .catch(() => {});
-=======
->>>>>>> 2607d3e9083655939ee8c7c42f837ed16908c6d4
     }
   }, [user]);
 

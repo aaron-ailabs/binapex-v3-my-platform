@@ -112,6 +112,7 @@ app.use((req, res, next) => {
 
   const sessions = new Map<string, Set<any>>();
   const transcripts = new Map<string, ChatMessage[]>();
+  const sessionMeta = new Map<string, { createdAt: number; lastActivity: number }>();
   function broadcastPresenceUpdate() {
     const p = getPresence();
     // send to all clients in all sessions
@@ -166,6 +167,11 @@ app.use((req, res, next) => {
 
     if (!sessions.has(sessionId)) sessions.set(sessionId, new Set());
     sessions.get(sessionId)!.add(ws);
+    if (!sessionMeta.has(sessionId)) sessionMeta.set(sessionId, { createdAt: Date.now(), lastActivity: Date.now() });
+    else {
+      const m = sessionMeta.get(sessionId)!;
+      sessionMeta.set(sessionId, { ...m, lastActivity: Date.now() });
+    }
 
     ws.on("message", (raw) => {
       let parsed: any = {};
@@ -178,6 +184,8 @@ app.use((req, res, next) => {
           timestamp: Date.now(),
         };
         broadcast(sessionId, payload);
+        const m = sessionMeta.get(sessionId);
+        if (m) sessionMeta.set(sessionId, { ...m, lastActivity: Date.now() });
 
         // AI fallback if no agent online
         if (getPresence().status === "offline") {
@@ -190,7 +198,7 @@ app.use((req, res, next) => {
       const set = sessions.get(sessionId);
       if (set) {
         set.delete(ws);
-        if (set.size === 0) sessions.delete(sessionId);
+        if (set.size === 0) { sessions.delete(sessionId); sessionMeta.delete(sessionId); }
       }
     });
 
@@ -203,6 +211,15 @@ app.use((req, res, next) => {
   app.get('/api/chat/history/:sessionId', (req, res) => {
     const id = req.params.sessionId;
     res.json({ messages: transcripts.get(id) || [] });
+  });
+
+  app.get('/api/support/sessions', (_req, res) => {
+    const list = Array.from(sessions.keys()).map((id) => {
+      const clients = sessions.get(id)?.size || 0;
+      const meta = sessionMeta.get(id) || { createdAt: 0, lastActivity: 0 };
+      return { sessionId: id, clients, createdAt: meta.createdAt, lastActivity: meta.lastActivity };
+    });
+    res.json(list);
   });
 })();
   const apiLogWindows = new Map<string, { start: number; count: number; suppressedNoted: boolean }>();
